@@ -3,6 +3,9 @@
 
 **Supervisors** : <a href="https://www.mn.uio.no/ifi/personer/vit/jimtoer/">Jim Tørresen</a>
 
+## Status
+![Python package](https://github.com/gil-uav/semantic-image-segmentation/workflows/Python%20package/badge.svg?branch=master)
+
 ## Description
 
 This repository aims to implement and produce trained networks in semantic image segmentation for
