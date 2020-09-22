@@ -287,6 +287,9 @@ def get_args():
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    args = get_args()
+
     if bool(os.getenv("PROD")):
         logging.info("Training i production mode, disabling all debugging APIs")
         torch.autograd.set_detect_anomaly(False)
@@ -300,8 +303,6 @@ if __name__ == "__main__":
             enabled=True, use_cuda=True, record_shapes=True, profile_memory=True
         )
         torch.autograd.profiler.emit_nvtx(enabled=True, record_shapes=True)
-
-    args = get_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}")
@@ -323,6 +324,7 @@ if __name__ == "__main__":
         logging.info(f"Model loaded from {args.load}")
 
     cudnn.benchmark = True  # cudnn Autotuner
+    cudnn.enabled = True  # look for optimal algorithms
 
     try:
         model.to(device=device)
