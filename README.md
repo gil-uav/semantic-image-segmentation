@@ -5,12 +5,17 @@
 
 ## Description
 
-This repository aims to implement and produce trained networks in semantic image segmentation for [orthopohots](https
-://www.sciencedirect.com
-/topics/earth-and-planetary-sciences/orthophoto).
+This repository aims to implement and produce trained networks in semantic image segmentation for
+[orthopohots](https://www.sciencedirect.com/topics/earth-and-planetary-sciences/orthophoto).
 Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/).
 
+## Dependencies
+* [Python](https://www.python.org/) (version 3.6 or newer)
+* [Pip](https://virtualenv.pypa.io/en/latest/)
+* [virtualenv](https://virtualenv.pypa.io/en/latest/) (Recommended build-method)
+
 ## Installation
+
 ### Linux
 
 ```bash
