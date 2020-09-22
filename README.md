@@ -82,17 +82,6 @@ DIR_CHECKPOINTS="checkpoints/"
 WORKERS=8 # Number of workers for data- and validation loading
 ```
 
-## Requirements
-```
-Python>=3.6
-numpy==1.19.2
-python-dotenv==0.14.0
-scikit-image==0.17.2
-torch==1.6.0
-torchvision==0.7.0
-tqdm==4.49.0
-```
-
 ## Optimizations
 - [x] Asynchronous data loading and augmentation enabled.
 - [x] cuDNN autotuner enabled.
