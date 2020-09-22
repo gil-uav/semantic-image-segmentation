@@ -159,6 +159,9 @@ def train_net(
 
                 epoch_loss += loss.item()
 
+                if global_step == 0:
+                    writer.add_graph(model.module, images)
+
                 writer.add_scalar("Training loss", loss.item(), global_step)
                 p_bar.set_postfix(**{"Batch loss": loss.item()})
 
