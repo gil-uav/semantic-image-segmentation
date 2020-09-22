@@ -162,7 +162,7 @@ def train_net(
                 if global_step == 0:
                     writer.add_graph(model.module, images)
 
-                writer.add_scalar("Training loss", loss.item(), global_step)
+                writer.add_scalar("Batch loss/train", loss.item(), global_step)
                 p_bar.set_postfix(**{"Batch loss": loss.item()})
 
                 loss.backward()  # Backward pass, also Synchronizes GPU
@@ -188,7 +188,7 @@ def train_net(
                         )
 
                     # Run test evaluation
-                    test_metrics = eval_net(model, val_loader, dev)
+                    test_metrics = eval_net(model, val_loader, dev, criterion)
                     scheduler.step(test_metrics["F1"])
                     writer.add_scalar(
                         "Learning rate", optimizer.param_groups[0]["lr"], global_step
@@ -206,10 +206,15 @@ def train_net(
                             torch.sigmoid(masks_pred) > 0.5,
                             global_step,
                         )
+
         # Run training evaluation
         logging.info("\nRunning training evaluation.")
-        train_metrics = eval_net(model, train_loader, dev)
 
+        epoch_loss /= len(train_loader)
+        writer.add_scalar("Epoch loss/train", epoch_loss, global_step)
+        logging.info("Training epoch loss: {}".format(epoch_loss))
+
+        train_metrics = eval_net(model, train_loader, dev, criterion)
         for key, val in zip(train_metrics.keys(), train_metrics.values()):
             logging.info("Training {}: {}".format(key, val))
             writer.add_scalar("{}/train".format(key), val, global_step)

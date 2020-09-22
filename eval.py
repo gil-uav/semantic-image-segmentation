@@ -10,7 +10,7 @@ from pytorch_lightning.metrics.functional import (
 )
 
 
-def eval_net(net, loader, device):
+def eval_net(net, loader, device, criterion):
     """
     Evaluates network with accuracy, F1, precision, recall and IoU.
 
@@ -22,6 +22,8 @@ def eval_net(net, loader, device):
         Data to evaluate network on.
     device : torch.Device
         CPU or GPU
+    criterion : nn._Loss
+        Loss function
 
     Returns
     -------
@@ -31,7 +33,7 @@ def eval_net(net, loader, device):
     net.eval()  # Turn off training layers
     mask_type = torch.float32 if net.module.n_classes == 1 else torch.long
     val_amount = len(loader)  # the number of batch
-    _accuracy = _f1 = _precision = _recall = _iou = 0
+    _accuracy = _f1 = _precision = _recall = _iou = _loss = 0
 
     with tqdm(
         total=val_amount, desc="Validating", unit="batch", position=0, leave=True
@@ -45,6 +47,7 @@ def eval_net(net, loader, device):
             with autocast(enabled=True):
                 with torch.no_grad():  # Disable gradient calculation
                     masks_pred = net(images)
+                    _loss += criterion(masks_pred, masks).item()
 
             pred = torch.sigmoid(masks_pred)
             pred = (pred > 0.5).float()
@@ -59,6 +62,7 @@ def eval_net(net, loader, device):
 
             p_bar.set_postfix(
                 **{
+                    "L": _loss / val_amount,
                     "A": _accuracy / val_amount,
                     "F1": _f1 / val_amount,
                     "P": _precision / val_amount,
@@ -70,6 +74,7 @@ def eval_net(net, loader, device):
 
     net.train()  # Turn on training layers
     return {
+        "Avg Loss": _loss / val_amount,
         "Accuracy": _accuracy / val_amount,
         "F1": _f1 / val_amount,
         "Precision": _precision / val_amount,
