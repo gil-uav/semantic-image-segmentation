@@ -1,4 +1,7 @@
 # Semantic Image Segmentation
+
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/629f30d5855f4a4cbab64b031f4f5612)](https://app.codacy.com/gh/gil-uav/semantic-image-segmentation?utm_source=github.com&utm_medium=referral&utm_content=gil-uav/semantic-image-segmentation&utm_campaign=Badge_Grade_Settings)
+
 **Members** : <a href="https://github.com/vegovs">Vegard Bergsvik Øvstegård</a>
 
 **Supervisors** : <a href="https://www.mn.uio.no/ifi/personer/vit/jimtoer/">Jim Tørresen</a>
