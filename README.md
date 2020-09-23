@@ -21,24 +21,42 @@ Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/peop
 
 ### Linux
 
-```bash
+#### virtualenv
+
+```console
 git clone https://github.com/gil-uav/semantic-image-segmentation.git
 python3 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 ```
 Uninstall Pillow and install Pillow-SIMD:
-```
+```console
 pip uninstall pillow
 pip install pillow-simd
 ```
 If you have a AVX2-enabled CPU, check with `grep avx2 /proc/cpuinfo`, you can install Pillow-SIMD with:
-```
+```console
 pip uninstall pillow
 CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 ```
 This should have slightly better performance than the SSE4(default) version and much better than the standard Pillow
  package.
+
+#### Conda
+
+Same procedure as with virtualenv, but run:
+```console
+conda env create --file environment.yml
+```
+instead of:
+```console
+python3 -m venv env
+source env/bin/activate
+pip install -r requirements.txt
+```
+
+NB! Remember to uninstall and reinstall Pillow-SIMD. In some cases, python might not find the PIL
+package, however a reinstall fixes this 99% of the time.
 
 ## Usage
 
@@ -46,7 +64,7 @@ This should have slightly better performance than the SSE4(default) version and 
 The application fetches configurations and parameters from a .env file if it exists.
 This can be overridden and changed by passing the following arguments:
 
-```bash
+```console
 usage: train.py [-h] [-e E] [-b [B]] [-lr [LR]] [-f LOAD] [-v VAL]
 
 Train the UNet on images and target masks
