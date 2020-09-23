@@ -4,7 +4,7 @@
 **Supervisors** : <a href="https://www.mn.uio.no/ifi/personer/vit/jimtoer/">Jim Tørresen</a>
 
 ## Status
-![Python package](https://github.com/gil-uav/semantic-image-segmentation/workflows/Python%20package/badge.svg?branch=master)
+![Python package](https://github.com/gil-uav/semantic-image-segmentation/workflows/Python%20package/badge.svg?branch=master)![Python Package using Conda](https://github.com/gil-uav/semantic-image-segmentation/workflows/Python%20Package%20using%20Conda/badge.svg)
 
 ## Description
 
