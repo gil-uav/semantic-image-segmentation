@@ -21,14 +21,23 @@ Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/peop
 
 ### Linux
 
+```console
+git clone https://github.com/gil-uav/semantic-image-segmentation.git
+```
+
 #### virtualenv
 
 ```console
-git clone https://github.com/gil-uav/semantic-image-segmentation.git
 python3 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 ```
+
+#### Conda
+```console
+conda env create --file environment.yml
+```
+
 Uninstall Pillow and install Pillow-SIMD:
 ```console
 pip uninstall pillow
@@ -41,19 +50,6 @@ CC="cc -mavx2" pip install -U --force-reinstall pillow-simd
 ```
 This should have slightly better performance than the SSE4(default) version and much better than the standard Pillow
  package.
-
-#### Conda
-
-Same procedure as with virtualenv, but run:
-```console
-conda env create --file environment.yml
-```
-instead of:
-```console
-python3 -m venv env
-source env/bin/activate
-pip install -r requirements.txt
-```
 
 NB! Remember to uninstall and reinstall Pillow-SIMD. In some cases, python might not find the PIL
 package, however a reinstall fixes this 99% of the time.
