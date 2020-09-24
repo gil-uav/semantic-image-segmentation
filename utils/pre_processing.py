@@ -8,7 +8,7 @@ from skimage.util import random_noise
 from torchvision import transforms
 
 
-class Rescale(object):
+class Rescale():
     """
     Rescale the image in a sample to a given size, returns image as min-max normalized (0,1).
 
@@ -45,7 +45,7 @@ class Rescale(object):
         return {"image": img, "mask": msk}
 
 
-class ToTensor(object):
+class ToTensor():
     """
     Convert ndarrays in sample to Tensors.
     """
@@ -62,7 +62,7 @@ class ToTensor(object):
         return {"image": image, "mask": mask}
 
 
-class RandomRotate(object):
+class RandomRotate():
     """
     Rotate randomly the image and mask in a sample. (90, 180 or 270 degrees)
     """
@@ -92,7 +92,7 @@ class RandomRotate(object):
         return {"image": image, "mask": mask}
 
 
-class RandomFlip(object):
+class RandomFlip():
     """
     Flip randomly the image and mask in a sample.
     """
@@ -125,7 +125,7 @@ class RandomFlip(object):
         return {"image": image, "mask": mask}
 
 
-class RandomNoise(object):
+class RandomNoise():
     """
     Adds noise randomly to the image in a sample, also applies min-max normalizaiton(0,1)
     due to skimage functions.
@@ -178,7 +178,7 @@ class RandomNoise(object):
         return {"image": image, "mask": mask}
 
 
-class RandomBrightness(object):
+class RandomBrightness():
     """
     Changes brightness randomly to the image in a sample.
 
@@ -200,7 +200,7 @@ class RandomBrightness(object):
         return {"image": image, "mask": mask}
 
 
-class RandomSharpness(object):
+class RandomSharpness():
     """
     Changes the sharpness randomly to the image in a sample.
 
@@ -222,7 +222,7 @@ class RandomSharpness(object):
         return {"image": image, "mask": mask}
 
 
-class RandomContrast(object):
+class RandomContrast():
     """
     Changes Contrast randomly to the image in a sample.
 
@@ -244,7 +244,7 @@ class RandomContrast(object):
         return {"image": image, "mask": mask}
 
 
-class MaskToClasses(object):
+class MaskToClasses():
     """
     Converts mask images to tensors with class indices from 0 to (number of colors) - 1.
 
@@ -268,10 +268,8 @@ class MaskToClasses(object):
             for k in self.mapping:
                 mask[mask == k] = self.mapping[k]
             return {"image": image, "mask": mask}
-        # Single-class
-        else:
-            mask = transforms.ToTensor()(mask)
-            return {"image": image, "mask": mask}
+        mask = transforms.ToTensor()(mask)
+        return {"image": image, "mask": mask}
 
 
 if __name__ == "__main__":
