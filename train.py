@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from eval import eval_net
 from unet.unet_model import UNet
-from utils.dataset import OrhogonalPhotoDataset
+from utils.dataset import OrthogonalPhotoDataset
 
 load_dotenv(verbose=True)
 
@@ -54,7 +54,7 @@ def train_net(
     save_cp : bool
         Save checkpoints
     """
-    dataset = OrhogonalPhotoDataset(dir_img, dir_mask)
+    dataset = OrthogonalPhotoDataset(dir_img, dir_mask)
     val_amount = int(len(dataset) * val_percent)
     train_amount = len(dataset) - val_amount
 
