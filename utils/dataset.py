@@ -24,6 +24,8 @@ class OrthogonalPhotoDataset(Dataset):
         masks_dir: str,
         image_suffix: str = "_x",
         mask_suffix: str = "_y",
+        augmentation: bool = True,
+        resize: int = 256,
     ):
         """
         Parameters
@@ -36,7 +38,13 @@ class OrthogonalPhotoDataset(Dataset):
             Suffix for images.
         mask_suffix :str
             Suffix for masks.
+        augmentation :bool
+            Augmentation bool for tran/test sets.
+        resize :int
+            Rescale size for images.
         """
+        self.rescale = resize
+        self.augmentation = augmentation
         self.imgs_dir = imgs_dir
         self.masks_dir = masks_dir
         self.mask_suffix = mask_suffix
@@ -51,6 +59,17 @@ class OrthogonalPhotoDataset(Dataset):
         # 127: 1,
         # 255: 2
         # }
+
+    def set_augmentation(self, aug: bool = False):
+        """
+        Sets augmentation to true or false.
+
+        Parameters
+        ----------
+        aug : bool
+            Data Augmentation on or off.
+        """
+        self.augmentation = aug
 
     def __len__(self):
         return len(self.ids)
@@ -84,16 +103,21 @@ class OrthogonalPhotoDataset(Dataset):
             )
 
         # Data augmentation
-        transform = transforms.Compose(
-            [
-                Rescale(256),
-                RandomFlip(),
-                RandomColorJitter(),
-                RandomNoise(),  # Normalised
-                MaskToClasses(self.mapping),
-                ToTensor(),
-            ]
-        )
+        if self.augmentation:
+            transform = transforms.Compose(
+                [
+                    Rescale(self.rescale),
+                    RandomFlip(),
+                    RandomColorJitter(),
+                    RandomNoise(),  # Normalised
+                    MaskToClasses(self.mapping),
+                    ToTensor(),
+                ]
+            )
+        else:
+            transform = transforms.Compose(
+                [Rescale(self.rescale), MaskToClasses(self.mapping), ToTensor()]
+            )
 
         sample = {"image": img_as_img, "mask": msk_as_img}
 

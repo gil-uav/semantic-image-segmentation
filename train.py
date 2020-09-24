@@ -35,7 +35,8 @@ def train_net(
     save_cp: bool = True,
 ):
     """
-    Trains the network with the custom OrthogonalDataset. Remember to set mapping and classes in the dataset.
+    Trains the network with the custom OrthogonalDataset.
+    Remember to set mapping and classes in the dataset.
 
     Parameters
     ----------
@@ -70,6 +71,9 @@ def train_net(
     else:
         # Random generator
         train, val = random_split(dataset, [train_amount, val_amount])
+
+    # Disable augmentation for validation set.
+    val.dataset.set_augmentation(False)
 
     train_loader = DataLoader(
         train,
@@ -153,7 +157,7 @@ def train_net(
                 mask_type = torch.float32 if model.module.n_classes == 1 else torch.long
                 masks = masks.to(device=dev, dtype=mask_type, non_blocking=True)
 
-                # Automatic mixed precision(Hopefully to float16 to utilize tensor cores)
+                # Automatic mixed precision
                 with autocast():
                     masks_pred = model(images)  # Forward pass
                     loss = criterion(masks_pred, masks)  # Compute loss function
@@ -297,7 +301,6 @@ if __name__ == "__main__":
         torch.autograd.profiler.profile(enabled=False)
         torch.autograd.profiler.emit_nvtx(enabled=False)
     else:
-        # TODO: Implement these debuggers
         logging.info("Training i development mode, debugging APIs active.")
         torch.autograd.set_detect_anomaly(True)
         torch.autograd.profiler.profile(
