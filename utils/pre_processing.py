@@ -13,7 +13,7 @@ def _check_sample(sample: dict):
     if isinstance(sample, dict):
         if len(sample) != 2:
             raise ValueError(
-                "Sample must contain image and mask: {'image': image, 'mask': mask}"
+                "Sample must contain image and mask: " "{'image': image, 'mask': mask}"
             )
     else:
         raise TypeError("Sample must be a dict like: {'image': image, 'mask': mask}")
@@ -31,6 +31,7 @@ class Rescale(torch.nn.Module):
         Desired output size. If tuple, output is
         matched to output_size. If int, smaller of image edges is matched
         to output_size keeping aspect ratio the same.
+        It output size == 0, rescaling operation will be skippedd.
 
     Returns
     ----------
@@ -39,12 +40,39 @@ class Rescale(torch.nn.Module):
     """
 
     def __init__(self, output_size):
-        if not isinstance(output_size, (int, tuple)):
-            raise AssertionError
-        self.output_size = output_size
+        self.skip = False
+        self.output_size = self._check_input(output_size)
+
+    @torch.jit.unused
+    def _check_input(self, value):
+        if isinstance(value, int):
+            if 0 == value:
+                self.skip = True
+                return value
+            if 0 > value:
+                raise ValueError(
+                    "Rescale value must be positive, not {}.".format(value)
+                )
+        elif isinstance(value, tuple):
+            if len(value) != 2:
+                raise ValueError(
+                    "Rescale tuple must contain 2 dimesions, not {}".format(len(value))
+                )
+            if value[0] < 0 or value[1] < 0:
+                raise ValueError(
+                    "Rescale value must be positive, not {}.".format(value)
+                )
+        else:
+            raise TypeError(
+                "Output size must be int or tuple, not {}.".format(type(value))
+            )
+
+        return value
 
     def __call__(self, sample):
         sample = _check_sample(sample)
+        if self.skip:
+            return sample
         image, mask = sample["image"], sample["mask"]
 
         h, w = image.size
@@ -193,7 +221,6 @@ class RandomNoise(torch.nn.Module):
                 )
             if value == -1:
                 value = randint(0, 4)
-
         else:
             raise TypeError("Value must be int from 0 to 4.")
 
