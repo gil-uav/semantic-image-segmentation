@@ -21,7 +21,8 @@ class Rescale:
     """
 
     def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
+        if not isinstance(output_size, (int, tuple)):
+            raise AssertionError
         self.output_size = output_size
 
     def __call__(self, sample):
@@ -144,7 +145,8 @@ class RandomNoise:
         if noise == -1:
             self.noise = randint(0, 4)
         else:
-            assert 0 <= noise <= 4, "Noise override out of bounds."
+            if noise > 0:
+                raise AssertionError("Noise override out of bounds.")
             self.noise = noise
 
     def __call__(self, sample):
@@ -254,7 +256,8 @@ class MaskToClasses:
     """
 
     def __init__(self, mapping):
-        assert isinstance(mapping, dict)
+        if not isinstance(mapping, dict):
+            raise AssertionError
         self.mapping = mapping
 
     def __call__(self, sample):
