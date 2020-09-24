@@ -265,10 +265,8 @@ class MaskToClasses(object):
             for k in self.mapping:
                 mask[mask == k] = self.mapping[k]
             return {"image": image, "mask": mask}
-        # Single-class
-        else:
-            mask = transforms.ToTensor()(mask)
-            return {"image": image, "mask": mask}
+        mask = transforms.ToTensor()(mask)
+        return {"image": image, "mask": mask}
 
 
 if __name__ == "__main__":
