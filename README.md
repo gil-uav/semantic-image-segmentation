@@ -19,8 +19,6 @@ Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/peop
 
 ## Installation
 
-### Linux
-
 ```console
 git clone https://github.com/gil-uav/semantic-image-segmentation.git
 ```
@@ -36,6 +34,7 @@ pip install -r requirements.txt
 #### Conda
 ```console
 conda env create --file environment.yml
+conda activate seg
 ```
 
 Uninstall Pillow and install Pillow-SIMD:
