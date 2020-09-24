@@ -67,18 +67,21 @@ class OrthogonalPhotoDataset(Dataset):
             )
         )
 
-        assert (
-            len(msk_file) == 1
-        ), f"Either no mask or multiple masks found for the ID {idx}: {msk_file}"
-        assert (
-            len(img_file) == 1
-        ), f"Either no image or multiple images found for the ID {idx}: {img_file}"
+        if len(msk_file) != 1:
+            raise AssertionError(
+                f"Either no mask or multiple masks found for the ID {idx}: {msk_file}"
+            )
+        if len(img_file) != 1:
+            raise AssertionError(
+                f"Either no image or multiple images found for the ID {idx}: {img_file}"
+            )
         img_as_img = Image.open(img_file[0]).convert("RGB")
         msk_as_img = Image.open(msk_file[0]).convert("L")
 
-        assert (
-            img_as_img.size == msk_as_img.size
-        ), f"Image and mask {idx} should be the same size, but are {img_as_img.size} and {msk_as_img.size}"
+        if img_as_img.size != msk_as_img.size:
+            raise AssertionError(
+                f"Image and mask {idx} should be the same size, but are {img_as_img.size} and {msk_as_img.size}"
+            )
 
         # Data augmentation
         transform = transforms.Compose(

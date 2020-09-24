@@ -39,7 +39,8 @@ class Rescale(torch.nn.Module):
     """
 
     def __init__(self, output_size):
-        assert isinstance(output_size, (int, tuple))
+        if not isinstance(output_size, (int, tuple)):
+            raise AssertionError
         self.output_size = output_size
 
     def __call__(self, sample):
