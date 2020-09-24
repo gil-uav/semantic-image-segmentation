@@ -8,7 +8,7 @@ from skimage.util import random_noise
 from torchvision import transforms
 
 
-class Rescale():
+class Rescale:
     """
     Rescale the image in a sample to a given size, returns image as min-max normalized (0,1).
 
@@ -44,7 +44,7 @@ class Rescale():
         return {"image": img, "mask": msk}
 
 
-class ToTensor():
+class ToTensor:
     """
     Convert ndarrays in sample to Tensors.
     """
@@ -61,7 +61,7 @@ class ToTensor():
         return {"image": image, "mask": mask}
 
 
-class RandomRotate():
+class RandomRotate:
     """
     Rotate randomly the image and mask in a sample. (90, 180 or 270 degrees)
     """
@@ -91,7 +91,7 @@ class RandomRotate():
         return {"image": image, "mask": mask}
 
 
-class RandomFlip():
+class RandomFlip:
     """
     Flip randomly the image and mask in a sample.
     """
@@ -124,7 +124,7 @@ class RandomFlip():
         return {"image": image, "mask": mask}
 
 
-class RandomNoise():
+class RandomNoise:
     """
     Adds noise randomly to the image in a sample, also applies min-max normalizaiton(0,1)
     due to skimage functions.
@@ -176,7 +176,7 @@ class RandomNoise():
         return {"image": image, "mask": mask}
 
 
-class RandomBrightness():
+class RandomBrightness:
     """
     Changes brightness randomly to the image in a sample.
 
@@ -198,7 +198,7 @@ class RandomBrightness():
         return {"image": image, "mask": mask}
 
 
-class RandomSharpness():
+class RandomSharpness:
     """
     Changes the sharpness randomly to the image in a sample.
 
@@ -220,7 +220,7 @@ class RandomSharpness():
         return {"image": image, "mask": mask}
 
 
-class RandomContrast():
+class RandomContrast:
     """
     Changes Contrast randomly to the image in a sample.
 
@@ -242,7 +242,7 @@ class RandomContrast():
         return {"image": image, "mask": mask}
 
 
-class MaskToClasses():
+class MaskToClasses:
     """
     Converts mask images to tensors with class indices from 0 to (number of colors) - 1.
 
