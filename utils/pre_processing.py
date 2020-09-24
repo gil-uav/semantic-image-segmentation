@@ -145,7 +145,7 @@ class RandomNoise(object):
         if noise == -1:
             self.noise = randint(0, 4)
         else:
-            if 0 > noise:
+            if noise > 0:
                 raise AssertionError("Noise override out of bounds.")
             self.noise = noise
 
