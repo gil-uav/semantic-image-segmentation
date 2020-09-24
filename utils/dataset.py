@@ -11,15 +11,13 @@ from utils.pre_processing import (
     ToTensor,
     Rescale,
     RandomFlip,
-    RandomBrightness,
-    RandomSharpness,
-    RandomContrast,
+    RandomColorJitter,
     RandomNoise,
     MaskToClasses,
 )
 
 
-class OrhogonalPhotoDataset(Dataset):
+class OrthogonalPhotoDataset(Dataset):
     def __init__(
         self,
         imgs_dir: str,
@@ -87,9 +85,7 @@ class OrhogonalPhotoDataset(Dataset):
             [
                 Rescale(256),
                 RandomFlip(),
-                RandomBrightness(),
-                RandomSharpness(),
-                RandomContrast(),
+                RandomColorJitter(),
                 RandomNoise(),  # Normalised
                 MaskToClasses(self.mapping),
                 ToTensor(),

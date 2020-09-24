@@ -1,3 +1,4 @@
+import numbers
 import random
 from random import randint
 
@@ -8,7 +9,19 @@ from skimage.util import random_noise
 from torchvision import transforms
 
 
-class Rescale:
+def _check_sample(sample: dict):
+    if isinstance(sample, dict):
+        if len(sample) != 2:
+            raise ValueError(
+                "Sample must contain image and mask: {'image': image, 'mask': mask}"
+            )
+    else:
+        raise TypeError("Sample must be a dict like: {'image': image, 'mask': mask}")
+
+    return sample
+
+
+class Rescale(torch.nn.Module):
     """
     Rescale the image in a sample to a given size, returns image as min-max normalized (0,1).
 
@@ -18,6 +31,11 @@ class Rescale:
         Desired output size. If tuple, output is
         matched to output_size. If int, smaller of image edges is matched
         to output_size keeping aspect ratio the same.
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': torch.tensor ,'mask': torch.tensor}
     """
 
     def __init__(self, output_size):
@@ -25,6 +43,7 @@ class Rescale:
         self.output_size = output_size
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
         h, w = image.size
@@ -44,32 +63,39 @@ class Rescale:
         return {"image": img, "mask": msk}
 
 
-class ToTensor:
+class ToTensor(torch.nn.Module):
     """
     Convert ndarrays in sample to Tensors.
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': torch.tensor ,'mask': torch.tensor}
     """
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
-        # swap color axis because
-        # numpy image: H x W x C
-        # torch image: C X H X W
         image = transforms.ToTensor()(image)
-        # image = torch.from_numpy(np.array(image).transpose((2, 0, 1)))
-
         return {"image": image, "mask": mask}
 
 
-class RandomRotate:
+class RandomRotate(torch.nn.Module):
     """
     Rotate randomly the image and mask in a sample. (90, 180 or 270 degrees)
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
     """
 
     def __init__(self):
         self.rotate = randint(0, 3)
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
         if self.rotate == 0:
@@ -91,15 +117,21 @@ class RandomRotate:
         return {"image": image, "mask": mask}
 
 
-class RandomFlip:
+class RandomFlip(torch.nn.Module):
     """
     Flip randomly the image and mask in a sample.
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
     """
 
     def __init__(self):
         self.flip = randint(0, 3)
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
         if self.flip == 0:
@@ -124,7 +156,7 @@ class RandomFlip:
         return {"image": image, "mask": mask}
 
 
-class RandomNoise:
+class RandomNoise(torch.nn.Module):
     """
     Adds noise randomly to the image in a sample, also applies min-max normalizaiton(0,1)
     due to skimage functions.
@@ -138,16 +170,36 @@ class RandomNoise:
         [2] Poisson
         [3] Speckle
         [4] None
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
     """
 
     def __init__(self, noise: int = -1):
-        if noise == -1:
-            self.noise = randint(0, 4)
+        super().__init__()
+        self.noise = self._check_input(noise)
+
+    @torch.jit.unused
+    def _check_input(self, value):
+        if isinstance(value, int):
+            if 0 > value > 4:
+                raise ValueError(
+                    "Noise override out of bounds. Value must be between [0,4] and is {}".format(
+                        value
+                    )
+                )
+            if value == -1:
+                value = randint(0, 4)
+
         else:
-            assert 0 <= noise <= 4, "Noise override out of bounds."
-            self.noise = noise
+            raise TypeError("Value must be int from 0 to 4.")
+
+        return value
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
         if self.noise == 0:
@@ -176,73 +228,81 @@ class RandomNoise:
         return {"image": image, "mask": mask}
 
 
-class RandomBrightness:
+class RandomColorJitter(torch.nn.Module):
     """
-    Changes brightness randomly to the image in a sample.
+    Randomly change the brightness, contrast and saturation of an image.
 
     Parameters
     ----------
-    low : int
-        Lower value for brightness adjustment.
-    high : int
-        High value for brightness adjustment.
-    """
+    brightness : (float or tuple of float (min, max))
+        How much to jitter brightness
+    contrast : (float or tuple of float (min, max))
+        How much to jitter contrast
+    saturation : (float or tuple of float (min, max))
+        How much to jitter saturation
 
-    def __init__(self, low: int = 0.5, high: int = 1.5):
-        self.factor = random.uniform(low, high)
-
-    def __call__(self, sample):
-        image, mask = sample["image"], sample["mask"]
-        enhancer = ImageEnhance.Brightness(image)
-        image = enhancer.enhance(self.factor)
-        return {"image": image, "mask": mask}
-
-
-class RandomSharpness:
-    """
-    Changes the sharpness randomly to the image in a sample.
-
-    Parameters
+    Returns
     ----------
-    low : int
-        Lower value for brightness adjustment.
-    high : int
-        High value for brightness adjustment.
+    dict
+        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
     """
 
-    def __init__(self, low: int = 0.5, high: int = 1.5):
-        self.factor = random.uniform(low, high)
+    def __init__(self, brightness=0, contrast=0, saturation=0):
+        self.brightness = self._check_input(brightness, "brightness")
+        self.contrast = self._check_input(contrast, "contrast")
+        self.saturation = self._check_input(saturation, "saturation")
+
+    @torch.jit.unused
+    def _check_input(
+        self, value, name, center=1, bound=(0, float("inf")), clip_first_on_zero=True
+    ):
+        if isinstance(value, numbers.Number):
+            if value < 0:
+                raise ValueError(
+                    "If {} is a single number, it must be non negative.".format(name)
+                )
+            value = [center - float(value), center + float(value)]
+            if clip_first_on_zero:
+                value[0] = max(value[0], 0.0)
+        elif isinstance(value, (tuple, list)) and len(value) == 2:
+            if not bound[0] <= value[0] <= value[1] <= bound[1]:
+                raise ValueError("{} values should be between {}".format(name, bound))
+        else:
+            raise TypeError(
+                "{} should be a single number or a list/tuple with lenght 2.".format(
+                    name
+                )
+            )
+        # if value is 0 or (1., 1.) for brightness/contrast/saturation
+        if value[0] == value[1] == center:
+            value = None
+        return value
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
-        enhancer = ImageEnhance.Sharpness(image)
-        image = enhancer.enhance(self.factor)
+        enhancements = []
+
+        if self.brightness is not None:
+            brightness_factor = random.uniform(self.brightness[0], self.brightness[1])
+            enhancements.append((brightness_factor, ImageEnhance.Brightness(image)))
+        if self.contrast is not None:
+            contrast_factor = random.uniform(self.contrast[0], self.contrast[1])
+            enhancements.append((contrast_factor, ImageEnhance.Brightness(image)))
+        if self.saturation is not None:
+            saturation_factor = random.uniform(self.saturation[0], self.saturation[1])
+            enhancements.append((saturation_factor, ImageEnhance.Brightness(image)))
+
+        random.shuffle(enhancements)
+        for transform in enhancements:
+            factor = transform[0]
+            enhancer = transform[1]
+            image = enhancer.enhance(factor)
+
         return {"image": image, "mask": mask}
 
 
-class RandomContrast:
-    """
-    Changes Contrast randomly to the image in a sample.
-
-    Parameters
-    ----------
-    low : int
-        Lower value for brightness adjustment.
-    high : int
-        High value for brightness adjustment.
-    """
-
-    def __init__(self, low: int = 0.5, high: int = 1.5):
-        self.factor = random.uniform(low, high)
-
-    def __call__(self, sample):
-        image, mask = sample["image"], sample["mask"]
-        enhancer = ImageEnhance.Contrast(image)
-        image = enhancer.enhance(self.factor)
-        return {"image": image, "mask": mask}
-
-
-class MaskToClasses:
+class MaskToClasses(torch.nn.Module):
     """
     Converts mask images to tensors with class indices from 0 to (number of colors) - 1.
 
@@ -251,13 +311,42 @@ class MaskToClasses:
     mapping: dict or None
         Mapping of colors to classes.
         mapping = {0: 0, 127: 1, 255: 2}
+        I.e {class: color}
+
+    Returns
+    ----------
+    dict
+        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
     """
 
     def __init__(self, mapping):
-        assert isinstance(mapping, dict)
-        self.mapping = mapping
+        self.mapping = self._check_input(mapping)
+
+    @torch.jit.unused
+    def _check_input(
+        self,
+        value,
+    ):
+        if isinstance(value, dict):
+            if len(value) < 2:
+                raise ValueError(
+                    "If its a single class, it must map true and false colors. I.e dict must contain 2 colors."
+                )
+            if any(0 > c > 255 for c in value.keys()):
+                raise ValueError("Colors must be from 0 to 255 and be of type int.")
+            if any(0 > c >= len(value) for c in value.values()):
+                raise ValueError(
+                    "Classes must range from 0 to n_classes and be of type int."
+                )
+        else:
+            raise TypeError(
+                "Mapping should be a dictionary with color: class. I.e {collor_1: 0, collor_2: 1}"
+            )
+
+        return value
 
     def __call__(self, sample):
+        sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
         # Multi-class
         if len(self.mapping) > 2:
@@ -267,7 +356,3 @@ class MaskToClasses:
             return {"image": image, "mask": mask}
         mask = transforms.ToTensor()(mask)
         return {"image": image, "mask": mask}
-
-
-if __name__ == "__main__":
-    pass
