@@ -137,11 +137,12 @@ def train_net(
             for batch in train_loader:
                 images = batch["image"]
                 masks = batch["mask"]
-                assert images.shape[1] == model.module.n_channels, (
-                    f"Network has been defined with {model.module.n_channels} input channels, "
-                    f"but loaded images have {images.shape[1]} channels. Please check that "
-                    "the images are loaded correctly."
-                )
+                if images.shape[1] != model.module.n_channels:
+                    raise AssertionError(
+                        f"Network has been defined with {model.module.n_channels} input channels, "
+                        f"but loaded images have {images.shape[1]} channels. Please check that "
+                        "the images are loaded correctly."
+                    )
 
                 # Same as optimizer.zero_grad() but more efficient.
                 for param in model.parameters():
