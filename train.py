@@ -225,8 +225,8 @@ def train_step(
                 param.grad = None
 
             # To device
-            images = images.to(device=dev, dtype=torch.float32)
             mask_type = torch.float32 if model.module.n_classes == 1 else torch.long
+            images = images.to(device=dev, dtype=torch.float32, non_blocking=True)
             masks = masks.to(device=dev, dtype=mask_type, non_blocking=True)
 
             # Automatic mixed precision
