@@ -6,6 +6,13 @@ import sys
 import torch
 import torch.nn as nn
 from dotenv import load_dotenv
+from pytorch_lightning.metrics.functional import (
+    accuracy,
+    f1_score,
+    precision,
+    recall,
+    iou,
+)
 from torch import optim
 from torch.backends import cudnn
 from torch.cuda.amp import autocast
@@ -14,7 +21,6 @@ from torch.utils.tensorboard import SummaryWriter
 
 from tqdm import tqdm
 
-from eval import eval_net
 from unet.unet_model import UNet
 from utils.dataset import OrthogonalPhotoDataset
 
@@ -33,6 +39,8 @@ def train_net(
     lr: float = 0.001,
     val_percent: float = 0.1,
     save_cp: bool = True,
+    image_size: int = 256,
+    val_int: int = 1,
 ):
     """
     Trains the network with the custom OrthogonalDataset.
@@ -54,10 +62,19 @@ def train_net(
         Percentage of the dataset for validation runs
     save_cp : bool
         Save checkpoints
+    image_size : int
+        Image height resize value
+    val_int : int
+        Validation interval, i.e 1 -> every Epoch.
+    """
+
+    """
+    SETUP
     """
     dataset = OrthogonalPhotoDataset(dir_img, dir_mask)
     val_amount = int(len(dataset) * val_percent)
     train_amount = len(dataset) - val_amount
+    best_loss = 1e10
 
     # Development-mode
     if not os.getenv("PROD"):
@@ -94,8 +111,6 @@ def train_net(
     # Tensorboad writer
     writer = SummaryWriter(comment=f"LR_{lr}_BS_{batch_size}")
 
-    global_step = 0
-
     logging.info(
         f"""Starting training:
         Epochs:          {epochs}
@@ -105,6 +120,7 @@ def train_net(
         Validation size: {val_amount}
         Checkpoints:     {save_cp}
         Device:          {dev.type}
+        Image height:    {image_size}px
     """
     )
 
@@ -113,9 +129,9 @@ def train_net(
         model.parameters(),
         lr=lr,
     )
-    # Scheduler
+    # Scheduler, reduce lr if no loss decrease over 5 epocs.
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, "min" if model.n_classes > 1 else "max", patience=8
+        optimizer, "min" if model.n_classes > 1 else "max", patience=5
     )
 
     # Loss function
@@ -124,105 +140,39 @@ def train_net(
     else:
         criterion = nn.BCEWithLogitsLoss()
 
-    model = nn.DataParallel(model)
+    model = nn.DataParallel(
+        model, device_ids=list(range(torch.cuda.device_count()))
+    ).cuda()
 
-    # Training
+    """
+    MAIN TRAINING LOOP
+    """
     for epoch in range(epochs):
 
-        epoch_loss = 0
-        model.train()
+        train_step(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            train_amount,
+            epoch,
+            epochs,
+            writer,
+            dev,
+        )
 
-        # Progress bar
-        with tqdm(
-            total=train_amount, desc=f"Epoch {epoch + 1}/{epochs}", unit="img"
-        ) as p_bar:
+        # Validation
+        if epoch % val_int == 0:
 
-            # Mini-batch runs
-            for batch in train_loader:
-                images = batch["image"]
-                masks = batch["mask"]
-                if images.shape[1] != model.module.n_channels:
-                    raise AssertionError(
-                        f"Network has been defined with {model.module.n_channels} input channels, "
-                        f"but loaded images have {images.shape[1]} channels. Please check that "
-                        "the images are loaded correctly."
-                    )
+            test_metrics = val_step(
+                model, val_loader, criterion, optimizer, writer, epoch
+            )
 
-                # Same as optimizer.zero_grad() but more efficient.
-                for param in model.parameters():
-                    param.grad = None
+            for key, val in zip(test_metrics.keys(), test_metrics.values()):
+                logging.info("Validation {}: {}".format(key, val))
+                writer.add_scalar("{}/test".format(key), val, epoch)
 
-                # To device
-                images = images.to(device=dev, dtype=torch.float32)
-                mask_type = torch.float32 if model.module.n_classes == 1 else torch.long
-                masks = masks.to(device=dev, dtype=mask_type, non_blocking=True)
-
-                # Automatic mixed precision
-                with autocast():
-                    masks_pred = model(images)  # Forward pass
-                    loss = criterion(masks_pred, masks)  # Compute loss function
-
-                epoch_loss += loss.item()
-
-                if global_step == 0:
-                    writer.add_graph(model.module, images)
-
-                writer.add_scalar("Batch loss/train", loss.item(), global_step)
-                p_bar.set_postfix(**{"Batch loss": loss.item()})
-
-                loss.backward()  # Backward pass, also Synchronizes GPU
-                nn.utils.clip_grad_value_(
-                    model.parameters(), 0.1
-                )  # To avoid the exploding gradients problem
-                optimizer.step()  # Optimizer step
-
-                p_bar.update(images.shape[0])
-                global_step += 1
-
-                # Validation
-                if global_step % (train_amount // (10 * batch_size)) == 0:
-
-                    logging.info("\nRunning test evaluation.")
-                    for tag, value in model.named_parameters():
-                        tag = tag.replace(".", "/")
-                        writer.add_histogram(
-                            "weights/" + tag, value.data.cpu().numpy(), global_step
-                        )
-                        writer.add_histogram(
-                            "grads/" + tag, value.grad.data.cpu().numpy(), global_step
-                        )
-
-                    # Run test evaluation
-                    test_metrics = eval_net(model, val_loader, dev, criterion)
-                    scheduler.step(test_metrics["F1"])
-                    writer.add_scalar(
-                        "Learning rate", optimizer.param_groups[0]["lr"], global_step
-                    )
-
-                    for key, val in zip(test_metrics.keys(), test_metrics.values()):
-                        logging.info("Validation {}: {}".format(key, val))
-                        writer.add_scalar("{}/test".format(key), val, global_step)
-
-                    writer.add_images("Images", images, global_step)
-                    if model.module.n_classes == 1:
-                        writer.add_images("True masks", masks, global_step)
-                        writer.add_images(
-                            "Predicted masks",
-                            torch.sigmoid(masks_pred) > 0.5,
-                            global_step,
-                        )
-
-        # Run training evaluation
-        logging.info("\nRunning training evaluation.")
-
-        epoch_loss /= len(train_loader)
-        writer.add_scalar("Epoch loss/train", epoch_loss, global_step)
-        logging.info("Training epoch loss: {}".format(epoch_loss))
-
-        train_metrics = eval_net(model, train_loader, dev, criterion)
-        for key, val in zip(train_metrics.keys(), train_metrics.values()):
-            logging.info("Training {}: {}".format(key, val))
-            writer.add_scalar("{}/train".format(key), val, global_step)
+        scheduler.step(test_metrics["Loss"])
 
         # Save checkpoint
         if save_cp:
@@ -231,10 +181,152 @@ def train_net(
                 logging.info("Created checkpoint directory")
             except OSError:
                 pass
+            if test_metrics["Loss"] < best_loss:
+                best_loss = test_metrics["Loss"]
+                torch.save(model.state_dict(), dir_checkpoint + "BEST_CP.pth")
             torch.save(model.state_dict(), dir_checkpoint + f"CP_epoch{epoch + 1}.pth")
             logging.info(f"Checkpoint {epoch + 1} saved !")
 
     writer.close()
+
+
+def train_step(
+    model,
+    train_loader,
+    criterion,
+    optimizer,
+    train_amount,
+    epoch,
+    epochs,
+    writer,
+    dev,
+):
+
+    train_loss = 0
+    model.train()
+
+    with tqdm(
+        total=train_amount, desc=f"Epoch {epoch + 1}/{epochs}", unit="img"
+    ) as p_bar:
+
+        for idx, batch in enumerate(train_loader):
+            images = batch["image"]
+            masks = batch["mask"]
+
+            if images.shape[1] != model.module.n_channels:
+                raise AssertionError(
+                    f"Network has been defined with {model.module.n_channels} input channels, "
+                    f"but loaded images have {images.shape[1]} channels. Please check that "
+                    "the images are loaded correctly."
+                )
+
+            # Same as optimizer.zero_grad() but more efficient.
+            for param in model.parameters():
+                param.grad = None
+
+            # To device
+            images = images.to(device=dev, dtype=torch.float32)
+            mask_type = torch.float32 if model.module.n_classes == 1 else torch.long
+            masks = masks.to(device=dev, dtype=mask_type, non_blocking=True)
+
+            # Automatic mixed precision
+            with autocast():
+                masks_pred = model(images)  # Forward pass
+                loss = criterion(masks_pred, masks)  # Compute loss function
+
+            p_bar.set_postfix(**{"Batch loss": loss.item()})
+
+            train_loss += loss.item()
+
+            # Backward pass, also Synchronizes GPUs
+            loss.backward()
+            # To avoid the exploding gradients problem
+            nn.utils.clip_grad_value_(model.parameters(), 0.1)
+
+            optimizer.step()
+
+            p_bar.update(images.shape[0])
+
+        if epoch == 0:
+            writer.add_graph(model.module, images)
+
+        writer.add_scalar("Loss/train", train_loss, epoch)
+
+
+def val_step(model, val_loader, criterion, optimizer, writer, epoch):
+    logging.info("\nRunning test evaluation.")
+
+    for tag, value in model.named_parameters():
+        tag = tag.replace(".", "/")
+        writer.add_histogram("weights/" + tag, value.data.cpu().numpy(), epoch)
+        writer.add_histogram("grads/" + tag, value.grad.data.cpu().numpy(), epoch)
+
+    # Run test evaluation
+    model.eval()  # Turn off training layers
+
+    mask_type = torch.float32 if model.module.n_classes == 1 else torch.long
+    val_amount = len(val_loader)  # the number of batch
+    _accuracy = _f1 = _precision = _recall = _iou = _loss = 0
+
+    with tqdm(
+        total=val_amount, desc="Validating", unit="batch", position=0, leave=True
+    ) as p_bar:
+        for batch in val_loader:
+            images, masks = batch["image"], batch["mask"]
+            images = images.to(device=device, dtype=torch.float32)
+            masks = masks.to(device=device, dtype=mask_type)
+
+            # Automatic mixed precision(Hopefully to float16 to utilize tensor cores)
+            with autocast(enabled=True):
+                with torch.no_grad():  # Disable gradient calculation
+                    masks_pred = model(images)
+                    _loss += criterion(masks_pred, masks).item()
+
+            pred = torch.sigmoid(masks_pred)
+            pred = (pred > 0.5).float()
+
+            # Calculate metrics
+            num_classes = model.module.n_classes + 1
+            _accuracy += accuracy(pred, masks, num_classes=num_classes).item()
+            _f1 += f1_score(pred, masks, num_classes=num_classes).item()
+            _precision += precision(pred, masks, num_classes=num_classes).item()
+            _recall += recall(pred, masks, num_classes=num_classes).item()
+            _iou += iou(pred, masks, num_classes=num_classes).item()
+
+            p_bar.set_postfix(
+                **{
+                    "L": _loss / val_amount,
+                    "A": _accuracy / val_amount,
+                    "F1": _f1 / val_amount,
+                    "P": _precision / val_amount,
+                    "R": _recall / val_amount,
+                    "IOU": _iou / val_amount,
+                }
+            )
+            p_bar.update()
+
+    writer.add_images("Images", images, epoch)
+    if model.module.n_classes == 1:
+        writer.add_images("True masks", masks, epoch)
+        writer.add_images(
+            "Predicted masks",
+            torch.sigmoid(masks_pred) > 0.5,
+            epoch,
+        )
+
+    model.train()  # Turn on training layers
+    writer.add_scalar("Learning rate", optimizer.param_groups[0]["lr"], epoch)
+
+    test_metrics = {
+        "Loss": _loss / val_amount,
+        "Accuracy": _accuracy / val_amount,
+        "F1": _f1 / val_amount,
+        "Precision": _precision / val_amount,
+        "Recall": _recall / val_amount,
+        "IOU": _iou / val_amount,
+    }
+
+    return test_metrics
 
 
 def get_args():
@@ -246,7 +338,8 @@ def get_args():
         "--epochs",
         metavar="E",
         type=int,
-        default=5 if not os.getenv("E") else os.getenv("E"),
+        nargs="?",
+        default=5 if not os.getenv("EPOCHS") else os.getenv("EPOCHS"),
         help="Number of epochs",
         dest="epochs",
     )
@@ -256,7 +349,7 @@ def get_args():
         metavar="B",
         type=int,
         nargs="?",
-        default=1 if not os.getenv("BS") else os.getenv("BS"),
+        default=1 if not os.getenv("BATCH_SIZE") else os.getenv("BATCH_SIZE"),
         help="Batch size",
         dest="batchsize",
     )
@@ -266,13 +359,14 @@ def get_args():
         metavar="LR",
         type=float,
         nargs="?",
-        default=0.0001 if not os.getenv("LR") else os.getenv("LR"),
+        default=0.0001 if not os.getenv("LRN_RATE") else os.getenv("LRN_RATE"),
         help="Learning rate",
         dest="lr",
     )
     parser.add_argument(
         "-f",
         "--load",
+        metavar="LD",
         dest="load",
         type=str,
         default=False,
@@ -282,9 +376,30 @@ def get_args():
         "-v",
         "--validation",
         dest="val",
+        metavar="VL",
+        nargs="?",
         type=float,
-        default=10.0 if not os.getenv("VAL") else os.getenv("VAL"),
+        default=10.0 if not os.getenv("VAL_PERC") else os.getenv("VAL_PERC"),
         help="Percent of the data that is used as validation (0-100)",
+    )
+    parser.add_argument(
+        "-is",
+        "--image-size",
+        dest="img_size",
+        nargs="?",
+        type=int,
+        default=256 if not os.getenv("IMG_SIZE") else os.getenv("IMG_SIZE"),
+        help="Image height value for resizing",
+    )
+    parser.add_argument(
+        "-vi",
+        "--validation-interval",
+        metavar="VI",
+        dest="val_int",
+        nargs="?",
+        type=int,
+        default=1 if not os.getenv("VAL_INT") else os.getenv("VAL_INT"),
+        help="Validation interval, i.e 1 -> every Epocch.",
     )
 
     return parser.parse_args()
@@ -310,11 +425,12 @@ if __name__ == "__main__":
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device {device}")
+
     model = UNet(
         n_channels=int(os.getenv("N_CHANNELS")),
         n_classes=int(os.getenv("N_CLASSES")),
         bilinear=bool(os.getenv("BILINEAR")),
-    ).cuda()
+    )
 
     logging.info(
         f"Network:\n"
@@ -331,7 +447,6 @@ if __name__ == "__main__":
     cudnn.enabled = True  # look for optimal algorithms
 
     try:
-        model.to(device=device)
         train_net(
             model=model,
             epochs=args.epochs,
@@ -339,6 +454,8 @@ if __name__ == "__main__":
             lr=args.lr,
             dev=device,
             val_percent=args.val / 100,
+            image_size=args.img_size,
+            val_int=args.val_int,
         )
     except KeyboardInterrupt:
         torch.save(model.state_dict(), "INTERRUPTED.pth")
