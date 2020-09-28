@@ -294,5 +294,32 @@ class UNet(pl.LightningModule):
             default=512 if not os.getenv("IMG_SIZE") else os.getenv("IMG_SIZE"),
             help="Image height value for resizing.",
         )
+        parser.add_argument(
+            "-valp",
+            "--validation-percent",
+            metavar="VALP",
+            dest="val_percent",
+            type=float,
+            default=10.0 if not os.getenv("VAL_PERC") else os.getenv("VAL_PERC"),
+            help="How much of dataset to be used as validation set.",
+        )
+        parser.add_argument(
+            "-bs",
+            "--batch-size",
+            dest="batch_size",
+            metavar="BS",
+            type=int,
+            default=1 if not os.getenv("BATCH_SIZE") else os.getenv("BATCH_SIZE"),
+            help="Batch size",
+        )
+        parser.add_argument(
+            "-dp",
+            "--data-path",
+            metavar="DP",
+            dest="data_path",
+            type=str,
+            default="data" if not os.getenv("DIR_DATA") else os.getenv("DIR_DATA"),
+            help="Load model from a .pth file",
+        )
 
         return parser
