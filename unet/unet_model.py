@@ -7,7 +7,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchvision
-from pytorch_lightning.metrics.functional import f1_score, recall, precision, accuracy
+from pytorch_lightning.metrics.functional import f1_score, recall, precision
 from torch.utils.data import random_split, DataLoader
 
 from unet.unet_modules import DoubleConvolution, Down, Up, OutConvolution
@@ -94,22 +94,23 @@ class UNet(pl.LightningModule):
 
     def setup(self, stage):
         dataset = OrthogonalPhotoDataset(**self.hparams)
+        test_amount = int(len(dataset) * self.hparams.test_percent / 100)
         val_amount = int(len(dataset) * self.hparams.val_percent / 100)
-        train_amount = len(dataset) - val_amount
+        train_amount = len(dataset) - val_amount - test_amount
 
         # Development-mode
         if not os.getenv("PROD"):
             # Fix the generator for reproducible results
-            self.train_set, self.val_set = random_split(
+            self.train_set, self.val_set, self.test_set = random_split(
                 dataset,
-                [train_amount, val_amount],
+                [train_amount, val_amount, test_amount],
                 generator=torch.Generator().manual_seed(42),
             )
         # Production-mode
         else:
             # Random generator
-            self.train_set, self.val_set = random_split(
-                dataset, [train_amount, val_amount]
+            self.train_set, self.val_set, self.test_set = random_split(
+                dataset, [train_amount, val_amount, test_amount]
             )
 
         # Disable augmentation for validation set.
@@ -120,7 +121,7 @@ class UNet(pl.LightningModule):
             self.train_set,
             batch_size=self.hparams.batch_size,
             shuffle=True,
-            num_workers=int(os.getenv("WORKERS", 0)),
+            num_workers=int(os.getenv("WORKERS", 4)),
             pin_memory=True,
         )
 
@@ -129,7 +130,17 @@ class UNet(pl.LightningModule):
             self.val_set,
             batch_size=self.hparams.batch_size,
             shuffle=False,
-            num_workers=int(os.getenv("WORKERS", 0)),
+            num_workers=int(os.getenv("WORKERS", 4)),
+            pin_memory=True,
+            drop_last=True,
+        )
+
+    def test_dataloader(self):
+        return DataLoader(
+            self.test_set,
+            batch_size=self.hparams.batch_size,
+            shuffle=False,
+            num_workers=int(os.getenv("WORKERS", 4)),
             pin_memory=True,
             drop_last=True,
         )
@@ -161,7 +172,15 @@ class UNet(pl.LightningModule):
         masks_pred = self(images)  # Forward pass
         loss = self.loss_funciton(masks_pred, masks)
         result = pl.TrainResult(minimize=loss)
-        result.log("train_loss", loss, on_epoch=True, sync_dist=True)
+        result.log("train_loss", loss, sync_dist=True)
+
+        pred = (torch.sigmoid(masks_pred) > 0.5).float()
+        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
+        rec = recall(pred, masks, self.hparams.n_classes + 1)
+        pres = precision(pred, masks, self.hparams.n_classes + 1)
+        result.log("train_f1", f1, on_epoch=True)
+        result.log("train_recall", rec, on_epoch=True)
+        result.log("train_precision", pres, on_epoch=True)
 
         return result
 
@@ -183,7 +202,7 @@ class UNet(pl.LightningModule):
         masks_pred = self(images)  # Forward pass
         loss = self.loss_funciton(masks_pred, masks)
         result = pl.EvalResult(loss, checkpoint_on=loss)
-        result.log("val_loss", loss, on_epoch=True, sync_dist=True)
+        result.log("val_loss", loss, sync_dist=True)
         if batch_idx == 0:
             rand_idx = randint(0, self.hparams.batch_size - 1)
             onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
@@ -217,17 +236,15 @@ class UNet(pl.LightningModule):
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
         rec = recall(pred, masks, self.hparams.n_classes + 1)
         pres = precision(pred, masks, self.hparams.n_classes + 1)
-        acc = accuracy(pred, masks, self.hparams.n_classes + 1)
-        result.log("f1", f1, on_epoch=True)
-        result.log("recall", rec, on_epoch=True)
-        result.log("precision", pres, on_epoch=True)
-        result.log("accuracy", acc, on_epoch=True)
+        result.log("val_f1", f1, on_epoch=True)
+        result.log("val_recall", rec, on_epoch=True)
+        result.log("val_precision", pres, on_epoch=True)
 
         return result
 
     def test_step(self, batch, batch_idx):
         images, masks = batch["image"], batch["mask"]
-        if images.shape[1] != self.n_channels:
+        if images.shape[1] != self.hparams.n_channels:
             raise AssertionError(
                 f"Network has been defined with {self.n_channels} input channels, "
                 f"but loaded images have {images.shape[1]} channels. Please check that "
@@ -242,8 +259,43 @@ class UNet(pl.LightningModule):
 
         masks_pred = self(images)  # Forward pass
         loss = self.loss_funciton(masks_pred, masks)
-        result = pl.EvalResult(loss)
-        result.log("test_loss", loss)
+        result = pl.EvalResult(loss, checkpoint_on=loss)
+        result.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+        rand_idx = randint(0, self.hparams.batch_size - 1)
+        onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
+        for tag, value in self.named_parameters():
+            tag = tag.replace(".", "/")
+            self.logger.experiment.add_histogram(tag, value, self.current_epoch)
+        mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
+        self.logger.experiment.add_image(
+            "Target vs Predicted", mask_grid, self.current_epoch
+        )
+        alpha = 0.5
+        image_grid = torchvision.utils.make_grid(
+            [
+                images[rand_idx],
+                torch.clamp(
+                    kornia.enhance.add_weighted(
+                        src1=images[rand_idx],
+                        alpha=1.0,
+                        src2=onehot,
+                        beta=alpha,
+                        gamma=0.0,
+                    ),
+                    max=1.0,
+                ),
+            ]
+        )
+        self.logger.experiment.add_image(
+            "Image vs Predicted", image_grid, self.current_epoch
+        )
+        pred = (torch.sigmoid(masks_pred) > 0.5).float()
+        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
+        rec = recall(pred, masks, self.hparams.n_classes + 1)
+        pres = precision(pred, masks, self.hparams.n_classes + 1)
+        result.log("test_f1", f1, on_epoch=True)
+        result.log("test_recall", rec, on_epoch=True)
+        result.log("test_precision", pres, on_epoch=True)
 
         return result
 
@@ -302,6 +354,15 @@ class UNet(pl.LightningModule):
             type=float,
             default=10.0 if not os.getenv("VAL_PERC") else os.getenv("VAL_PERC"),
             help="How much of dataset to be used as validation set.",
+        )
+        parser.add_argument(
+            "-tesp",
+            "--testing-percent",
+            metavar="TESP",
+            dest="test_percent",
+            type=float,
+            default=10.0 if not os.getenv("TEST_PERC") else os.getenv("TEST_PERC"),
+            help="How much of dataset to be used as testing set.",
         )
         parser.add_argument(
             "-bs",

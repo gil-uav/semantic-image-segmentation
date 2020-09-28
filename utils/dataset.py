@@ -47,7 +47,7 @@ class OrthogonalPhotoDataset(Dataset):
         self.image_size = image_size
         self.augmentation = augmentation
         self.imgs_dir = os.path.join(data_path, "images/")
-        self.masks_dir = os.path.join(data_path, "masks_b/")
+        self.masks_dir = os.path.join(data_path, "masks/")
         self.mask_suffix = mask_suffix
         self.image_suffix = image_suffix
         self.ids = [

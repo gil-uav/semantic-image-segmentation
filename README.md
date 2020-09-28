@@ -94,6 +94,7 @@ IMG_SIZE=256  # Image size
 VAL_INT=1 # Validation interval
 ACC_GRAD=4 # Accumulated gradients, number = K.
 GRAD_CLIP=1.0 # Clip gradients with norm above give value
+EARLY_STOP=10 # Early stopping patience(Epochs)
 
 # Other
 PROD=False # Turn on or off debugging APIs

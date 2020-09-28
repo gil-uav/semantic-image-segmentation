@@ -13,9 +13,8 @@ from unet.unet_model import UNet
 
 load_dotenv(verbose=True)
 
-if __name__ == "__main__":
-    logging.getLogger("lightning").setLevel(logging.ERROR)
 
+def main():
     parser = ArgumentParser()
 
     parser = UNet.add_model_specific_args(parser)
@@ -50,7 +49,11 @@ if __name__ == "__main__":
     cudnn.enabled = True  # look for optimal algorithms
 
     lr_monitor = LearningRateLogger(logging_interval="step")
-    early_stopping = EarlyStopping("val_loss", patience=5, verbose=True)
+    early_stopping = EarlyStopping(
+        "val_loss",
+        patience=5 if not os.getenv("EARLY_STOP") else int(os.getenv("EARLY_STOP")),
+        verbose=True,
+    )
 
     try:
         trainer = Trainer.from_argparse_args(
@@ -66,6 +69,7 @@ if __name__ == "__main__":
             gradient_clip_val=0.0
             if not os.getenv("GRAD_CLIP")
             else float(os.getenv("GRAD_CLIP")),
+            max_epochs=1000 if not os.getenv("EPOCHS") else os.getenv("EPOCHS"),
         )
         trainer.fit(model)
     except KeyboardInterrupt:
@@ -75,3 +79,7 @@ if __name__ == "__main__":
             sys.exit(0)
         except SystemExit:
             os._exit(0)
+
+
+if __name__ == "__main__":
+    main()
