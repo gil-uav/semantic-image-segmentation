@@ -13,9 +13,11 @@ This repository aims to implement and produce trained networks in semantic image
 Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/).
 
 ## Dependencies
-* [Python](https://www.python.org/) (version 3.6 or 3.7)
+* [Python](https://www.python.org/) (version 3.6, 3.7 or 3.8)
 * [Pip](https://virtualenv.pypa.io/en/latest/)
-* [virtualenv](https://virtualenv.pypa.io/en/latest/) (Recommended build-method)
+* [virtualenv](https://virtualenv.pypa.io/en/latest/) or:
+* [conda](https://docs.conda.io/en/latest/)
+* [Cuda](https://developer.nvidia.com/cuda-10.2-download-archive) version 10.2
 
 ## Installation
 
@@ -56,32 +58,27 @@ package, however a reinstall fixes this 99% of the time.
 ## Usage
 
 ### Training
-The application fetches configurations and parameters from a .env file if it exists.
-This can be overridden and changed by passing the following arguments:
+The application fetches some configurations and parameters from a .env file if it exists.
+Run `python train.py --help` to see all other arguments. The package is using [pytorch-lighting](https://github.com/PyTorchLightning/pytorch-lightning) and inherits all its arguments.
+
+The data is expected to be structured like this:
+```
+data/
+    images/
+    masks/
+```
+The path do data us set using --dp argument.
+
+#### Console example
+This example stores the checkpoints and logs under the default_root_dir, uses all available GPUs and
+fetches training data from --dp.
 
 ```console
-usage: train.py [-h] [-e [E]] [-b [B]] [-lr [LR]] [-f LD] [-v [VL]]
-                [-is [IMG_SIZE]] [-vi [VI]]
-
-Train the UNet on images and target masks
-
-optional arguments:
-  -h, --help            show this help message and exit
-  -e [E], --epochs [E]  Number of epochs
-  -b [B], --batch-size [B]
-                        Batch size
-  -lr [LR], --learning-rate [LR]
-                        Learning rate
-  -f LD, --load LD      Load model from a .pth file
-  -v [VL], --validation [VL]
-                        Percent of the data that is used as validation (0-100)
-  -is [IMG_SIZE], --image-size [IMG_SIZE]
-                        Image height value for resizing
-  -vi [VI], --validation-interval [VI]
-                        Validation interval, i.e 1 -> every Epocch.
+python train.py --default_root_dir=/shared/use/this/ --gpus=-1 --dp=/data/is/here/
 ```
 
 #### .env example
+Only these arguments are fetched from .env, the rest must be passed through the CLI.
 ```
 # Model config
 N_CHANNELS=3
@@ -93,11 +90,13 @@ EPOCHS=100 # Epochs
 BATCH_SIZE=16 # Batch size
 LRN_RATE=0.00001 # Learning rate
 VAL_PERC=15 # Validation percent
-IMG_SIZE=512  # Image size
+IMG_SIZE=256  # Image size
 VAL_INT=1 # Validation interval
+ACC_GRAD=4 # Accumulated gradients, number = K.
+GRAD_CLIP=1.0 # Clip gradients with norm above give value
 
 # Other
-PROD=True # Turn on or off debugging APIs
+PROD=False # Turn on or off debugging APIs
 DIR_IMG="data/imgs/"
 DIR_MASK="data/masks_b/"
 DIR_CHECKPOINTS="checkpoints/"
@@ -108,7 +107,6 @@ WORKERS=4 # Number of workers for data- and validation loading
 * Try with different number of workers, but more than 0. A good starting point
 is `workers = cores * (threads per core)`.
 * Install Pillow-SIMD as described in [Installation](#installation).
-* Make sure you have a GPU with Cuda version 10.2.
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.
