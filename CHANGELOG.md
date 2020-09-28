@@ -1,4 +1,4 @@
-## 2.0.0 (2020-09-28)
+## 3.0.0 (2020-09-28)
 
 ### Feat
 
@@ -13,6 +13,8 @@
 ### Fix
 
 - fixed env variable for directories
+
+## 2.0.0 (2020-09-25)
 
 ### Refactor
 
