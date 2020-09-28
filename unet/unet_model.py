@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser
 from random import randint
 
-import kornia as kornia
+import kornia
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
