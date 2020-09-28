@@ -86,11 +86,12 @@ N_CLASSES=1
 BILINEAR=True
 
 # Hyperparameters
-EPOCHS=100 # Epochs
-BATCH_SIZE=16 # Batch size
-LRN_RATE=0.00001 # Learning rate
+EPOCHS=300 # Epochs
+BATCH_SIZE=4 # Batch size
+LRN_RATE=0.001 # Learning rate
 VAL_PERC=15 # Validation percent
-IMG_SIZE=256  # Image size
+TEST_PERC=15 # Testing percent
+IMG_SIZE=512  # Image size
 VAL_INT=1 # Validation interval
 ACC_GRAD=4 # Accumulated gradients, number = K.
 GRAD_CLIP=1.0 # Clip gradients with norm above give value
@@ -98,8 +99,8 @@ EARLY_STOP=10 # Early stopping patience(Epochs)
 
 # Other
 PROD=False # Turn on or off debugging APIs
-DIR_IMG="data/imgs/"
-DIR_MASK="data/masks_b/"
+DIR_IMG="data/images/"
+DIR_MASK="data/masks/"
 DIR_CHECKPOINTS="checkpoints/"
 WORKERS=4 # Number of workers for data- and validation loading
 ```
