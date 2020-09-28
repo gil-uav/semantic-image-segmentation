@@ -276,7 +276,7 @@ class UNet(pl.LightningModule):
             self.logger.experiment.add_histogram(tag, value, self.current_epoch)
         mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
         self.logger.experiment.add_image(
-            "Target vs Predicted", mask_grid, self.current_epoch
+            "TEST - Target vs Predicted", mask_grid, self.current_epoch
         )
         alpha = 0.5
         image_grid = torchvision.utils.make_grid(
@@ -295,7 +295,7 @@ class UNet(pl.LightningModule):
             ]
         )
         self.logger.experiment.add_image(
-            "Image vs Predicted", image_grid, self.current_epoch
+            "TEST - Image vs Predicted", image_grid, self.current_epoch
         )
         pred = (torch.sigmoid(masks_pred) > 0.5).float()
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
