@@ -102,12 +102,34 @@ PROD=False # Turn on or off debugging APIs
 DIR_DATA="data/" # Where dataset is stored
 DIR_ROOT_DIR="/shared/use/this/" # Where logs and checkpoint will be stored
 WORKERS=4 # Number of workers for data- and validation loading
+DISCORD_WH=httpsomethingwebhoowawnserisalways42
 ```
 
 ### Performance tips:
 * Try with different number of workers, but more than 0. A good starting point
 is `workers = cores * (threads per core)`.
 * Install Pillow-SIMD as described in [Installation](#installation).
+
+## Features
+### ML:
+* Distributed data parallel training
+* Early stopping
+* ADAM optimizer
+* Gradient clipping
+* ReduceLROnPlateau learning rate scheduler
+* Logging to Tensorboard
+* Metrics:
+    * Loss
+    * F1
+    * Precision
+    * Recall
+    * Visualise images
+* Gradient Accumulation(NB! Might conflict with batch-norm!)
+
+### Ease of use:
+* Add hyper-parameters and arguments from console
+* Load hyper-parameters from .env
+* Training finished notification to Discord
 
 ## Contributing
 Pull requests are welcome. For major changes, please open an issue first to discuss what you would like to change.

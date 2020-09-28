@@ -2,6 +2,7 @@ import logging
 import os
 import sys
 from argparse import ArgumentParser
+from knockknock import discord_sender
 
 import torch
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ from unet.unet_model import UNet
 load_dotenv(verbose=True)
 
 
+@discord_sender(webhook_url=os.getenv("DISCORD_WH"))
 def main():
     parser = ArgumentParser()
 

@@ -117,6 +117,19 @@ dependencies:
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.5=h9ceee32_0
   - pip:
+    - cssselect==1.1.0
+    - cssutils==1.0.2
+    - jeepney==0.4.3
+    - keyring==21.4.0
+    - knockknock==0.1.8.1
     - kornia==0.4.0
+    - lxml==4.5.2
+    - matrix-client==0.3.2
     - pillow-simd==7.0.0.post3
+    - premailer==3.7.0
+    - python-telegram-bot==12.8
+    - pytz==2020.1
+    - secretstorage==3.1.2
+    - twilio==6.45.4
+    - yagmail==0.13.241
 prefix: /home/vegovs/anaconda3/envs/seg
