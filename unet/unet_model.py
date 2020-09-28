@@ -150,8 +150,13 @@ class UNet(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=(self.lr or self.learning_rate)
         )
-        scheduler = ReduceLROnPlateau(optimizer, "min")
-
+        lr_scheduler = ReduceLROnPlateau(optimizer, "min")
+        scheduler = {
+            "scheduler": lr_scheduler,
+            "reduce_on_plateau": True,
+            # val_checkpoint_on is val_loss passed in as checkpoint_on
+            "monitor": "val_checkpoint_on",
+        }
         return [optimizer], [scheduler]
 
     def loss_funciton(self, input, target):
