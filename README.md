@@ -99,9 +99,8 @@ EARLY_STOP=10 # Early stopping patience(Epochs)
 
 # Other
 PROD=False # Turn on or off debugging APIs
-DIR_IMG="data/images/"
-DIR_MASK="data/masks/"
-DIR_CHECKPOINTS="checkpoints/"
+DIR_DATA="data/" # Where dataset is stored
+DIR_ROOT_DIR="/shared/use/this/" # Where logs and checkpoint will be stored
 WORKERS=4 # Number of workers for data- and validation loading
 ```
 

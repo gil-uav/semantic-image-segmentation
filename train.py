@@ -70,6 +70,9 @@ def main():
             if not os.getenv("GRAD_CLIP")
             else float(os.getenv("GRAD_CLIP")),
             max_epochs=1000 if not os.getenv("EPOCHS") else os.getenv("EPOCHS"),
+            default_root_dir=os.getcwd()
+            if not os.getenv("DIR_ROOT_DIR")
+            else os.getenv("DIR_ROOT_DIR"),
         )
         trainer.fit(model)
     except KeyboardInterrupt:
