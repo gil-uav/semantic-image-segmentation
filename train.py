@@ -75,6 +75,7 @@ def main():
             else os.getenv("DIR_ROOT_DIR"),
         )
         trainer.fit(model)
+        trainer.test(model)
     except KeyboardInterrupt:
         torch.save(model.state_dict(), "INTERRUPTED.pth")
         logging.info("Saved interrupt")
