@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torchvision
 from pytorch_lightning.metrics.functional import f1_score, recall, precision
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import random_split, DataLoader
 
 from unet.unet_modules import DoubleConvolution, Down, Up, OutConvolution
@@ -149,7 +150,9 @@ class UNet(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=(self.lr or self.learning_rate)
         )
-        return [optimizer]
+        scheduler = ReduceLROnPlateau(optimizer, "min")
+
+        return [optimizer], [scheduler]
 
     def loss_funciton(self, input, target):
         return self.criterion(input, target)
