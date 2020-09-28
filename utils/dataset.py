@@ -1,4 +1,5 @@
 import logging
+import os
 from glob import glob
 from os import listdir
 from os.path import splitext
@@ -20,12 +21,12 @@ from utils.pre_processing import (
 class OrthogonalPhotoDataset(Dataset):
     def __init__(
         self,
-        imgs_dir: str,
-        masks_dir: str,
+        data_path: str = "data/",
         image_suffix: str = "_x",
         mask_suffix: str = "_y",
         augmentation: bool = True,
-        resize: int = 256,
+        image_size: int = 256,
+        **kwargs,
     ):
         """
         Parameters
@@ -40,25 +41,22 @@ class OrthogonalPhotoDataset(Dataset):
             Suffix for masks.
         augmentation :bool
             Augmentation bool for tran/test sets.
-        resize :int
-            Rescale size for images.
+        image_size :int
+            Size to resize images to.
         """
-        self.rescale = resize
+        self.image_size = image_size
         self.augmentation = augmentation
-        self.imgs_dir = imgs_dir
-        self.masks_dir = masks_dir
+        self.imgs_dir = os.path.join(data_path, "images/")
+        self.masks_dir = os.path.join(data_path, "masks_b/")
         self.mask_suffix = mask_suffix
         self.image_suffix = image_suffix
         self.ids = [
-            splitext(file)[0] for file in listdir(imgs_dir) if not file.startswith(".")
+            splitext(file)[0]
+            for file in listdir(self.imgs_dir)
+            if not file.startswith(".")
         ]
         logging.info(f"Creating dataset with {len(self.ids)} examples")
         self.mapping = {0: 0, 255: 1}
-        # self.mapping = {
-        # 0: 0,
-        # 127: 1,
-        # 255: 2
-        # }
 
     def set_augmentation(self, aug: bool = False):
         """
@@ -106,7 +104,7 @@ class OrthogonalPhotoDataset(Dataset):
         if self.augmentation:
             transform = transforms.Compose(
                 [
-                    Rescale(self.rescale),
+                    Rescale(self.image_size),
                     RandomFlip(),
                     RandomColorJitter(),
                     RandomNoise(),  # Normalised
@@ -116,7 +114,7 @@ class OrthogonalPhotoDataset(Dataset):
             )
         else:
             transform = transforms.Compose(
-                [Rescale(self.rescale), MaskToClasses(self.mapping), ToTensor()]
+                [Rescale(self.image_size), MaskToClasses(self.mapping), ToTensor()]
             )
 
         sample = {"image": img_as_img, "mask": msk_as_img}

@@ -1,16 +1,33 @@
+import os
+from argparse import ArgumentParser
+from random import randint
+
+import kornia
+import pytorch_lightning as pl
+import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast
+import torchvision
+from pytorch_lightning.metrics.functional import f1_score, recall, precision, accuracy
+from torch.utils.data import random_split, DataLoader
 
 from unet.unet_modules import DoubleConvolution, Down, Up, OutConvolution
+from utils.dataset import OrthogonalPhotoDataset
 
 
-class UNet(nn.Module):
+class UNet(pl.LightningModule):
     """
     Basic U-net structure as described in : O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks
     for biomedical image segmentation.” 2015.
     """
 
-    def __init__(self, n_channels: int, n_classes: int, bilinear=True):
+    def __init__(
+        self,
+        n_channels: int = 3,
+        n_classes: int = 1,
+        bilinear=True,
+        lr: float = 0.0001,
+        **kwargs,
+    ):
         """
 
         Parameters
@@ -22,10 +39,21 @@ class UNet(nn.Module):
         bilinear : bool
             Bilinear interpolation in upsampling(default)
         """
-        super(UNet, self).__init__()
-        self.n_channels = n_channels
-        self.n_classes = n_classes
-        self.bilinear = bilinear
+        super().__init__()
+        self.lr = lr
+        self.save_hyperparameters()
+
+        self.example_input_array = torch.randn(
+            self.hparams.batch_size,
+            n_channels,
+            self.hparams.image_size,
+            self.hparams.image_size,
+        )
+
+        if self.hparams.n_classes > 1:
+            self.criterion = nn.CrossEntropyLoss()
+        else:
+            self.criterion = nn.BCEWithLogitsLoss()
 
         factor = 2 if bilinear else 1
 
@@ -41,7 +69,6 @@ class UNet(nn.Module):
         self.up_conv_4 = Up(128, 64, bilinear)
         self.out_conv = OutConvolution(64, n_classes)
 
-    @autocast()
     def forward(self, x):
         """
         Feed-forward function.
@@ -64,3 +91,208 @@ class UNet(nn.Module):
         out = self.out_conv(x)
 
         return out
+
+    def setup(self, stage):
+        dataset = OrthogonalPhotoDataset(**self.hparams)
+        val_amount = int(len(dataset) * self.hparams.val_percent / 100)
+        train_amount = len(dataset) - val_amount
+
+        # Development-mode
+        if not os.getenv("PROD"):
+            # Fix the generator for reproducible results
+            self.train_set, self.val_set = random_split(
+                dataset,
+                [train_amount, val_amount],
+                generator=torch.Generator().manual_seed(42),
+            )
+        # Production-mode
+        else:
+            # Random generator
+            self.train_set, self.val_set = random_split(
+                dataset, [train_amount, val_amount]
+            )
+
+        # Disable augmentation for validation set.
+        self.val_set.dataset.set_augmentation(False)
+
+    def train_dataloader(self):
+        return DataLoader(
+            self.train_set,
+            batch_size=self.hparams.batch_size,
+            shuffle=True,
+            num_workers=int(os.getenv("WORKERS", 0)),
+            pin_memory=True,
+        )
+
+    def val_dataloader(self):
+        return DataLoader(
+            self.val_set,
+            batch_size=self.hparams.batch_size,
+            shuffle=False,
+            num_workers=int(os.getenv("WORKERS", 0)),
+            pin_memory=True,
+            drop_last=True,
+        )
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(
+            self.parameters(), lr=(self.lr or self.learning_rate)
+        )
+        return [optimizer]
+
+    def loss_funciton(self, input, target):
+        return self.criterion(input, target)
+
+    def training_step(self, batch, batch_idx):
+        images, masks = batch["image"], batch["mask"]
+        if images.shape[1] != self.hparams.n_channels:
+            raise AssertionError(
+                f"Network has been defined with {self.hparams.n_channels} input channels, "
+                f"but loaded images have {images.shape[1]} channels. Please check that "
+                "the images are loaded correctly."
+            )
+
+        masks = (
+            masks.type(torch.float32)
+            if self.hparams.n_classes == 1
+            else masks.type(torch.long)
+        )
+
+        masks_pred = self(images)  # Forward pass
+        loss = self.loss_funciton(masks_pred, masks)
+        result = pl.TrainResult(minimize=loss)
+        result.log("train_loss", loss, on_epoch=True, sync_dist=True)
+
+        return result
+
+    def validation_step(self, batch, batch_idx):
+        images, masks = batch["image"], batch["mask"]
+        if images.shape[1] != self.hparams.n_channels:
+            raise AssertionError(
+                f"Network has been defined with {self.n_channels} input channels, "
+                f"but loaded images have {images.shape[1]} channels. Please check that "
+                "the images are loaded correctly."
+            )
+
+        masks = (
+            masks.type(torch.float32)
+            if self.hparams.n_classes == 1
+            else masks.type(torch.long)
+        )
+
+        masks_pred = self(images)  # Forward pass
+        loss = self.loss_funciton(masks_pred, masks)
+        result = pl.EvalResult(loss, checkpoint_on=loss)
+        result.log("val_loss", loss, on_epoch=True, sync_dist=True)
+        if batch_idx == 0:
+            rand_idx = randint(0, self.hparams.batch_size - 1)
+            onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
+            for tag, value in self.named_parameters():
+                tag = tag.replace(".", "/")
+                self.logger.experiment.add_histogram(tag, value, self.current_epoch)
+            mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
+            self.logger.experiment.add_image(
+                "Target vs Predicted", mask_grid, self.current_epoch
+            )
+            alpha = 0.5
+            image_grid = torchvision.utils.make_grid(
+                [
+                    images[rand_idx],
+                    torch.clamp(
+                        kornia.enhance.add_weighted(
+                            src1=images[rand_idx],
+                            alpha=1.0,
+                            src2=onehot,
+                            beta=alpha,
+                            gamma=0.0,
+                        ),
+                        max=1.0,
+                    ),
+                ]
+            )
+            self.logger.experiment.add_image(
+                "Image vs Predicted", image_grid, self.current_epoch
+            )
+        pred = (torch.sigmoid(masks_pred) > 0.5).float()
+        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
+        rec = recall(pred, masks, self.hparams.n_classes + 1)
+        pres = precision(pred, masks, self.hparams.n_classes + 1)
+        acc = accuracy(pred, masks, self.hparams.n_classes + 1)
+        result.log("f1", f1, on_epoch=True)
+        result.log("recall", rec, on_epoch=True)
+        result.log("precision", pres, on_epoch=True)
+        result.log("accuracy", acc, on_epoch=True)
+
+        return result
+
+    def test_step(self, batch, batch_idx):
+        images, masks = batch["image"], batch["mask"]
+        if images.shape[1] != self.n_channels:
+            raise AssertionError(
+                f"Network has been defined with {self.n_channels} input channels, "
+                f"but loaded images have {images.shape[1]} channels. Please check that "
+                "the images are loaded correctly."
+            )
+
+        masks = (
+            masks.type(torch.float32)
+            if self.hparams.n_classes == 1
+            else masks.type(torch.long)
+        )
+
+        masks_pred = self(images)  # Forward pass
+        loss = self.loss_funciton(masks_pred, masks)
+        result = pl.EvalResult(loss)
+        result.log("test_loss", loss)
+
+        return result
+
+    @staticmethod
+    def add_model_specific_args(parent_parser):
+        parser = ArgumentParser(parents=[parent_parser], add_help=False)
+        parser.add_argument(
+            "-ch",
+            "--n-channels",
+            dest="n_channels",
+            type=int,
+            metavar="NCHS",
+            default=3 if not os.getenv("N_CHANNELS") else os.getenv("N_CHANNELS"),
+            help="Number of channels in input.",
+        )
+        parser.add_argument(
+            "-cl",
+            "--n-classes",
+            dest="n_classes",
+            type=int,
+            metavar="NCLS",
+            default=1 if not os.getenv("N_CLASSES") else os.getenv("N_CLASSES"),
+            help="Number of classes to classify.",
+        )
+        parser.add_argument(
+            "-lr",
+            "--learning-rate",
+            dest="lr",
+            type=float,
+            metavar="LR",
+            default=0.0001 if not os.getenv("LRN_RATE") else os.getenv("LRN_RATE"),
+            help="Number of classes to classify.",
+        )
+        parser.add_argument(
+            "-b",
+            "--bilinear",
+            dest="bilinear",
+            type=bool,
+            default=True if not os.getenv("BILINEAR") else os.getenv("BILINEAR"),
+            help="To use bilinear up-scaling i in the model.",
+        )
+        parser.add_argument(
+            "-is",
+            "--image-size",
+            dest="image_size",
+            type=int,
+            metavar="IS",
+            default=512 if not os.getenv("IMG_SIZE") else os.getenv("IMG_SIZE"),
+            help="Image height value for resizing.",
+        )
+
+        return parser

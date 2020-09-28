@@ -1,8 +1,8 @@
 name: seg
 channels:
+  - anaconda
   - pytorch
   - conda-forge
-  - anaconda
   - defaults
 dependencies:
   - _libgcc_mutex=0.1=main
@@ -18,19 +18,19 @@ dependencies:
   - chardet=3.0.4=py38_1003
   - click=7.1.2=py_0
   - cloudpickle=1.6.0=py_0
-  - cryptography=3.1=py38h1ba5d50_0
+  - cryptography=3.1.1=py38h1ba5d50_0
   - cudatoolkit=10.2.89=hfd86e86_1
   - cycler=0.10.0=py38_0
-  - cytoolz=0.10.1=py38h7b6447c_0
+  - cytoolz=0.11.0=py38h7b6447c_0
   - dask-core=2.27.0=py_0
-  - dbus=1.13.12=h746ee38_0
+  - dbus=1.13.16=hb2f20db_0
   - decorator=4.4.2=py_0
   - expat=2.2.9=he6710b0_2
   - fontconfig=2.13.0=h9420a91_0
   - freetype=2.10.2=h5ab3b9f_0
   - future=0.18.2=py38_1
-  - glib=2.56.2=hd408876_0
-  - google-auth=1.21.2=py_0
+  - glib=2.63.1=h5a9c865_0
+  - google-auth=1.21.3=py_0
   - google-auth-oauthlib=0.4.1=py_2
   - grpcio=1.31.0=py38hf8bcb03_0
   - gst-plugins-base=1.14.0=hbbd80ab_1
@@ -69,9 +69,10 @@ dependencies:
   - numpy-base=1.19.1=py38hfa32c7d_0
   - oauthlib=3.1.0=py_0
   - olefile=0.46=py_0
-  - openssl=1.1.1g=h7b6447c_0
+  - openssl=1.1.1h=h7b6447c_0
   - packaging=20.4=py_0
   - pcre=8.44=he6710b0_0
+  - pillow=7.2.0=py38hb39fc2d_0
   - pip=20.2.2=py38_0
   - protobuf=3.12.4=py38he6710b0_0
   - pyasn1=0.4.8=py_0
@@ -97,13 +98,13 @@ dependencies:
   - scikit-image=0.16.2=py38h0573a6f_0
   - scipy=1.5.2=py38h0b6359f_0
   - setuptools=49.6.0=py38_0
-  - sip=4.19.24=py38he6710b0_0
+  - sip=4.19.13=py38he6710b0_0
   - six=1.15.0=py_0
   - sqlite=3.33.0=h62c20be_0
   - tensorboard=2.2.0=py_0
   - tensorboard-plugin-wit=1.6.0=py_0
   - tk=8.6.10=hbc83047_0
-  - toolz=0.10.0=py_0
+  - toolz=0.11.1=py_0
   - torchvision=0.7.0=py38_cu102
   - tornado=6.0.4=py38h7b6447c_1
   - tqdm=4.49.0=pyh9f0ad1d_0
@@ -116,5 +117,6 @@ dependencies:
   - zlib=1.2.11=h7b6447c_3
   - zstd=1.4.5=h9ceee32_0
   - pip:
+    - kornia==0.4.0
     - pillow-simd==7.0.0.post3
 prefix: /home/vegovs/anaconda3/envs/seg
