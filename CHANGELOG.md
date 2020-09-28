@@ -1,3 +1,13 @@
+## 3.1.0 (2020-09-29)
+
+### Feat
+
+- **train**: discord notification on train finished
+
+### Fix
+
+- added test loop
+
 ## 3.0.0 (2020-09-28)
 
 ### Feat
