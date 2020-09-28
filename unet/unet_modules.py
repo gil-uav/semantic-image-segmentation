@@ -32,7 +32,7 @@ class DoubleConvolution(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-    def forward(self, x) -> torch.nn.Sequential:
+    def forward(self, x):
         """
         Preforms and returns results from the conv 3x3, ReLu step.
 
