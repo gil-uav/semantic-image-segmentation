@@ -156,6 +156,11 @@ class UNet(pl.LightningModule):
             "reduce_on_plateau": True,
             # val_checkpoint_on is val_loss passed in as checkpoint_on
             "monitor": "val_checkpoint_on",
+            "patience": 5,
+            "mode": "min",
+            "factor": 0.1,
+            "verbose": True,
+            "min_lr": 1e-8,
         }
         return [optimizer], [scheduler]
 
@@ -219,7 +224,7 @@ class UNet(pl.LightningModule):
                 self.logger.experiment.add_histogram(tag, value, self.current_epoch)
             mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
             self.logger.experiment.add_image(
-                "Target vs Predicted", mask_grid, self.current_epoch
+                "VAL - Target vs Predicted", mask_grid, self.current_epoch
             )
             alpha = 0.5
             image_grid = torchvision.utils.make_grid(
@@ -238,7 +243,7 @@ class UNet(pl.LightningModule):
                 ]
             )
             self.logger.experiment.add_image(
-                "Image vs Predicted", image_grid, self.current_epoch
+                "VAL - Image vs Predicted", image_grid, self.current_epoch
             )
         pred = (torch.sigmoid(masks_pred) > 0.5).float()
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
