@@ -253,7 +253,7 @@ class RandomNoise(torch.nn.Module):
             var = 0.1
             image = random_noise(image, mode="speckle", mean=mean, var=var, clip=True)
 
-        return {"image": image, "mask": mask}
+        return {"image": np.float32(image), "mask": mask}
 
 
 class RandomColorJitter(torch.nn.Module):

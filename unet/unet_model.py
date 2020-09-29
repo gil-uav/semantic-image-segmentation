@@ -1,3 +1,4 @@
+import copy
 import os
 from argparse import ArgumentParser
 from random import randint
@@ -95,6 +96,7 @@ class UNet(pl.LightningModule):
 
     def setup(self, stage):
         dataset = OrthogonalPhotoDataset(**self.hparams)
+        test_dataset = copy.deepcopy(OrthogonalPhotoDataset(**self.hparams))
         test_amount = int(len(dataset) * self.hparams.test_percent / 100)
         val_amount = int(len(dataset) * self.hparams.val_percent / 100)
         train_amount = len(dataset) - val_amount - test_amount
@@ -115,7 +117,10 @@ class UNet(pl.LightningModule):
             )
 
         # Disable augmentation for validation set.
+        self.val_set.dataset = test_dataset
+        self.test_set.dataset = test_dataset
         self.val_set.dataset.set_augmentation(False)
+        self.test_set.dataset.set_augmentation(False)
 
     def train_dataloader(self):
         return DataLoader(
@@ -167,6 +172,36 @@ class UNet(pl.LightningModule):
     def loss_funciton(self, input, target):
         return self.criterion(input, target)
 
+    def logg_images(self, images, masks, masks_pred, step: str = ""):
+        rand_idx = randint(0, self.hparams.batch_size - 1)
+        onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
+        for tag, value in self.named_parameters():
+            tag = tag.replace(".", "/")
+            self.logger.experiment.add_histogram(tag, value, self.current_epoch)
+        mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
+        self.logger.experiment.add_image(
+            "{} - Target vs Predicted".format(step), mask_grid, self.current_epoch
+        )
+        alpha = 0.5
+        image_grid = torchvision.utils.make_grid(
+            [
+                images[rand_idx],
+                torch.clamp(
+                    kornia.enhance.add_weighted(
+                        src1=images[rand_idx],
+                        alpha=1.0,
+                        src2=onehot,
+                        beta=alpha,
+                        gamma=0.0,
+                    ),
+                    max=1.0,
+                ),
+            ]
+        )
+        self.logger.experiment.add_image(
+            "{} - Image vs Predicted".format(step), image_grid, self.current_epoch
+        )
+
     def training_step(self, batch, batch_idx):
         images, masks = batch["image"], batch["mask"]
         if images.shape[1] != self.hparams.n_channels:
@@ -186,7 +221,8 @@ class UNet(pl.LightningModule):
         loss = self.loss_funciton(masks_pred, masks)
         result = pl.TrainResult(minimize=loss)
         result.log("train_loss", loss, sync_dist=True)
-
+        if batch_idx == 0:
+            self.logg_images(images, masks, masks_pred, "TRAIN")
         pred = (torch.sigmoid(masks_pred) > 0.5).float()
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
         rec = recall(pred, masks, self.hparams.n_classes + 1)
@@ -217,34 +253,7 @@ class UNet(pl.LightningModule):
         result = pl.EvalResult(loss, checkpoint_on=loss)
         result.log("val_loss", loss, sync_dist=True)
         if batch_idx == 0:
-            rand_idx = randint(0, self.hparams.batch_size - 1)
-            onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
-            for tag, value in self.named_parameters():
-                tag = tag.replace(".", "/")
-                self.logger.experiment.add_histogram(tag, value, self.current_epoch)
-            mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
-            self.logger.experiment.add_image(
-                "VAL - Target vs Predicted", mask_grid, self.current_epoch
-            )
-            alpha = 0.5
-            image_grid = torchvision.utils.make_grid(
-                [
-                    images[rand_idx],
-                    torch.clamp(
-                        kornia.enhance.add_weighted(
-                            src1=images[rand_idx],
-                            alpha=1.0,
-                            src2=onehot,
-                            beta=alpha,
-                            gamma=0.0,
-                        ),
-                        max=1.0,
-                    ),
-                ]
-            )
-            self.logger.experiment.add_image(
-                "VAL - Image vs Predicted", image_grid, self.current_epoch
-            )
+            self.logg_images(images, masks, masks_pred, "VAL")
         pred = (torch.sigmoid(masks_pred) > 0.5).float()
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
         rec = recall(pred, masks, self.hparams.n_classes + 1)
@@ -274,35 +283,7 @@ class UNet(pl.LightningModule):
         loss = self.loss_funciton(masks_pred, masks)
         result = pl.EvalResult(loss, checkpoint_on=loss)
         result.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
-        if batch_idx == 0:
-            for tag, value in self.named_parameters():
-                tag = tag.replace(".", "/")
-                self.logger.experiment.add_histogram(tag, value, self.current_epoch)
-        rand_idx = randint(0, self.hparams.batch_size - 1)
-        onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
-        mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
-        self.logger.experiment.add_image(
-            "TEST - Target vs Predicted", mask_grid, self.current_epoch
-        )
-        alpha = 0.5
-        image_grid = torchvision.utils.make_grid(
-            [
-                images[rand_idx],
-                torch.clamp(
-                    kornia.enhance.add_weighted(
-                        src1=images[rand_idx],
-                        alpha=1.0,
-                        src2=onehot,
-                        beta=alpha,
-                        gamma=0.0,
-                    ),
-                    max=1.0,
-                ),
-            ]
-        )
-        self.logger.experiment.add_image(
-            "TEST - Image vs Predicted", image_grid, self.current_epoch
-        )
+        self.logg_images(images, masks, masks_pred, "TEST")
         pred = (torch.sigmoid(masks_pred) > 0.5).float()
         f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
         rec = recall(pred, masks, self.hparams.n_classes + 1)
