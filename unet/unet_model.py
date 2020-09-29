@@ -274,11 +274,12 @@ class UNet(pl.LightningModule):
         loss = self.loss_funciton(masks_pred, masks)
         result = pl.EvalResult(loss, checkpoint_on=loss)
         result.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
+        if batch_idx == 0:
+            for tag, value in self.named_parameters():
+                tag = tag.replace(".", "/")
+                self.logger.experiment.add_histogram(tag, value, self.current_epoch)
         rand_idx = randint(0, self.hparams.batch_size - 1)
         onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
-        for tag, value in self.named_parameters():
-            tag = tag.replace(".", "/")
-            self.logger.experiment.add_histogram(tag, value, self.current_epoch)
         mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
         self.logger.experiment.add_image(
             "TEST - Target vs Predicted", mask_grid, self.current_epoch
