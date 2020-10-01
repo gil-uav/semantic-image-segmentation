@@ -106,8 +106,8 @@ class OrthogonalPhotoDataset(Dataset):
                 [
                     Rescale(self.image_size),
                     RandomFlip(),
-                    RandomColorJitter(),
-                    RandomNoise(),  # Normalised
+                    RandomColorJitter(brightness=0.5, contrast=0.5, saturation=1.0),
+                    RandomNoise(),
                     MaskToClasses(self.mapping),
                     ToTensor(),
                 ]

@@ -1,3 +1,4 @@
+import glob
 import numbers
 import random
 from random import randint
@@ -5,6 +6,7 @@ from random import randint
 import numpy as np
 import torch
 from PIL import Image, ImageEnhance, ImageFilter
+from skimage import img_as_float32
 from skimage.util import random_noise
 from torchvision import transforms
 
@@ -129,15 +131,15 @@ class RandomRotate(torch.nn.Module):
 
         if self.rotate == 0:
             # vertical
-            image.transpose(Image.ROTATE_90)
-            mask.transpose(Image.ROTATE_90)
+            image = image.transpose(Image.ROTATE_90)
+            mask = mask.transpose(Image.ROTATE_90)
         elif self.rotate == 1:
             # horizontal
-            image.transpose(Image.ROTATE_180)
-            mask.transpose(Image.ROTATE_180)
+            image = image.transpose(Image.ROTATE_180)
+            mask = mask.transpose(Image.ROTATE_180)
         elif self.rotate == 2:
-            image.transpose(Image.ROTATE_270)
-            mask.transpose(Image.ROTATE_270)
+            image = image.transpose(Image.ROTATE_270)
+            mask = mask.transpose(Image.ROTATE_270)
         else:
             # no effect
             image = image
@@ -165,18 +167,18 @@ class RandomFlip(torch.nn.Module):
 
         if self.flip == 0:
             # vertical
-            image.transpose(Image.FLIP_LEFT_RIGHT)
-            mask.transpose(Image.FLIP_LEFT_RIGHT)
+            image = image.transpose(Image.FLIP_LEFT_RIGHT)
+            mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
         elif self.flip == 1:
             # horizontal
-            image.transpose(Image.FLIP_TOP_BOTTOM)
-            mask.transpose(Image.FLIP_TOP_BOTTOM)
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
+            mask = mask.transpose(Image.FLIP_TOP_BOTTOM)
         elif self.flip == 2:
             # horizontally and vertically flip
-            image.transpose(Image.FLIP_TOP_BOTTOM)
-            mask.transpose(Image.FLIP_TOP_BOTTOM)
-            image.transpose(Image.FLIP_LEFT_RIGHT)
-            mask.transpose(Image.FLIP_LEFT_RIGHT)
+            image = image.transpose(Image.FLIP_TOP_BOTTOM)
+            mask = mask.transpose(Image.FLIP_TOP_BOTTOM)
+            image = image.transpose(Image.FLIP_LEFT_RIGHT)
+            mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
         else:
             # no effect
             image = image
@@ -203,7 +205,7 @@ class RandomNoise(torch.nn.Module):
     Returns
     ----------
     dict
-        Returns sample as {'image': PIL.Image.Image,'mask': PIL.Image.Image}
+        Returns sample as {'image': np.ndarray(float32) ,'mask': PIL.Image.Image}
     """
 
     def __init__(self, noise: int = -1):
@@ -220,7 +222,7 @@ class RandomNoise(torch.nn.Module):
                     )
                 )
             if value == -1:
-                value = randint(0, 4)
+                value = randint(0, 5)  # Higher chance of no noise
         else:
             raise TypeError("Value must be int from 0 to 4.")
 
@@ -230,30 +232,28 @@ class RandomNoise(torch.nn.Module):
         sample = _check_sample(sample)
         image, mask = sample["image"], sample["mask"]
 
+        if type(image) != np.ndarray:
+            image = np.array(image)
+
         if self.noise == 0:
             # Gaussian noise
-            radius = random.uniform(0.01, 1.0)
-            image = image.filter(ImageFilter.GaussianBlur(radius=radius))
+            mean = 0
+            var = random.uniform(0.001, 0.02)
+            image = random_noise(image, mode="gaussian", mean=mean, var=var, clip=True)
         elif self.noise == 1:
             # Salt and pepper
-            if type(image) != np.ndarray:
-                image = np.array(image)
             amount = random.uniform(0.001, 0.05)
             image = random_noise(image, mode="s&p", amount=amount, clip=True)
         elif self.noise == 2:
             # Poisson
-            if type(image) != np.ndarray:
-                image = np.array(image)
             image = random_noise(image, mode="poisson", clip=True)
         elif self.noise == 3:
             # Speckle
-            if type(image) != np.ndarray:
-                image = np.array(image)
             mean = 0
-            var = 0.1
+            var = random.uniform(0.001, 0.1)
             image = random_noise(image, mode="speckle", mean=mean, var=var, clip=True)
 
-        return {"image": np.float32(image), "mask": mask}
+        return {"image": img_as_float32(image), "mask": mask}
 
 
 class RandomColorJitter(torch.nn.Module):
@@ -316,10 +316,10 @@ class RandomColorJitter(torch.nn.Module):
             enhancements.append((brightness_factor, ImageEnhance.Brightness(image)))
         if self.contrast is not None:
             contrast_factor = random.uniform(self.contrast[0], self.contrast[1])
-            enhancements.append((contrast_factor, ImageEnhance.Brightness(image)))
+            enhancements.append((contrast_factor, ImageEnhance.Contrast(image)))
         if self.saturation is not None:
             saturation_factor = random.uniform(self.saturation[0], self.saturation[1])
-            enhancements.append((saturation_factor, ImageEnhance.Brightness(image)))
+            enhancements.append((saturation_factor, ImageEnhance.Color(image)))
 
         random.shuffle(enhancements)
         for transform in enhancements:
@@ -384,3 +384,29 @@ class MaskToClasses(torch.nn.Module):
             return {"image": image, "mask": mask}
         mask = transforms.ToTensor()(mask)
         return {"image": image, "mask": mask}
+
+
+# Sanity checking
+if __name__ == "__main__":
+    image = "../data/images/2688_x.png"
+    mask = "../data/masks/2688_y.png"
+    img = Image.open(image)
+    msk = Image.open(mask)
+    sample = {"image": img, "mask": msk}
+    sample["image"].show()
+
+    # Test data augmentation
+    for _ in range(100):
+        transform = transforms.Compose(
+            [
+                Rescale(0),
+                RandomFlip(),
+                RandomColorJitter(brightness=0.5, contrast=0.5, saturation=1.0),
+                RandomNoise(),
+                ToTensor(),
+            ]
+        )
+        tranformed_sample = transform(sample)
+        img = transforms.ToPILImage()(tranformed_sample["image"])
+        img.show()
+        input("Press Enter to continue...")
