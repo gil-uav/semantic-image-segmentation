@@ -92,7 +92,7 @@ LRN_RATE=0.001 # Learning rate
 VAL_PERC=15 # Validation percent
 TEST_PERC=15 # Testing percent
 IMG_SIZE=512  # Image size
-VAL_INT=1 # Validation interval
+VAL_INT_PER=1 # Validation interval percentage
 ACC_GRAD=4 # Accumulated gradients, number = K.
 GRAD_CLIP=1.0 # Clip gradients with norm above give value
 EARLY_STOP=10 # Early stopping patience(Epochs)

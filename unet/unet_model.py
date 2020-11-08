@@ -8,11 +8,11 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchvision
-from pytorch_lightning.metrics.functional import f1_score, recall, precision
+from pytorch_lightning.metrics.functional import f1_score, precision, recall
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader, random_split
 
-from unet.unet_modules import DoubleConvolution, Down, Up, OutConvolution
+from unet.unet_modules import DoubleConvolution, Down, OutConvolution, Up
 from utils.dataset import OrthogonalPhotoDataset
 
 
@@ -102,6 +102,7 @@ class UNet(pl.LightningModule):
         train_amount = len(dataset) - val_amount - test_amount
 
         # Development-mode
+
         if not os.getenv("PROD"):
             # Fix the generator for reproducible results
             self.train_set, self.val_set, self.test_set = random_split(
@@ -155,19 +156,24 @@ class UNet(pl.LightningModule):
         optimizer = torch.optim.Adam(
             self.parameters(), lr=(self.lr or self.learning_rate)
         )
-        lr_scheduler = ReduceLROnPlateau(optimizer, "min")
-        scheduler = {
-            "scheduler": lr_scheduler,
-            "reduce_on_plateau": True,
-            # val_checkpoint_on is val_loss passed in as checkpoint_on
-            "monitor": "val_checkpoint_on",
-            "patience": 5,
-            "mode": "min",
-            "factor": 0.1,
-            "verbose": True,
-            "min_lr": 1e-8,
+        lr_scheduler = ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=0.01,
+            patience=10,
+            threshold=0.0001,
+            threshold_mode="rel",
+            cooldown=0,
+            min_lr=0,
+            eps=1e-08,
+            verbose=False,
+        )
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": lr_scheduler,
+            "monitor": "val_loss",
         }
-        return [optimizer], [scheduler]
 
     def loss_funciton(self, input, target):
         return self.criterion(input, target)
@@ -175,6 +181,7 @@ class UNet(pl.LightningModule):
     def logg_images(self, images, masks, masks_pred, step: str = ""):
         rand_idx = randint(0, self.hparams.batch_size - 1)
         onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
+
         for tag, value in self.named_parameters():
             tag = tag.replace(".", "/")
             self.logger.experiment.add_histogram(tag, value, self.current_epoch)
@@ -203,96 +210,49 @@ class UNet(pl.LightningModule):
         )
 
     def training_step(self, batch, batch_idx):
-        images, masks = batch["image"], batch["mask"]
-        if images.shape[1] != self.hparams.n_channels:
-            raise AssertionError(
-                f"Network has been defined with {self.hparams.n_channels} input channels, "
-                f"but loaded images have {images.shape[1]} channels. Please check that "
-                "the images are loaded correctly."
-            )
-
-        masks = (
-            masks.type(torch.float32)
-            if self.hparams.n_classes == 1
-            else masks.type(torch.long)
-        )
-
-        masks_pred = self(images)  # Forward pass
-        loss = self.loss_funciton(masks_pred, masks)
-        result = pl.TrainResult(minimize=loss)
-        result.log("train_loss", loss, sync_dist=True)
+        images, masks, masks_pred, loss = self.shared_step("train", batch)
         if batch_idx == 0:
             self.logg_images(images, masks, masks_pred, "TRAIN")
-        pred = (torch.sigmoid(masks_pred) > 0.5).float()
-        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
-        rec = recall(pred, masks, self.hparams.n_classes + 1)
-        pres = precision(pred, masks, self.hparams.n_classes + 1)
-        result.log("train_f1", f1, on_epoch=True)
-        result.log("train_recall", rec, on_epoch=True)
-        result.log("train_precision", pres, on_epoch=True)
 
-        return result
+        return loss
 
     def validation_step(self, batch, batch_idx):
-        images, masks = batch["image"], batch["mask"]
-        if images.shape[1] != self.hparams.n_channels:
-            raise AssertionError(
-                f"Network has been defined with {self.n_channels} input channels, "
-                f"but loaded images have {images.shape[1]} channels. Please check that "
-                "the images are loaded correctly."
-            )
-
-        masks = (
-            masks.type(torch.float32)
-            if self.hparams.n_classes == 1
-            else masks.type(torch.long)
-        )
-
-        masks_pred = self(images)  # Forward pass
-        loss = self.loss_funciton(masks_pred, masks)
-        result = pl.EvalResult(loss, checkpoint_on=loss)
-        result.log("val_loss", loss, sync_dist=True)
+        images, masks, masks_pred, loss = self.shared_step("val", batch)
         if batch_idx == 0:
             self.logg_images(images, masks, masks_pred, "VAL")
-        pred = (torch.sigmoid(masks_pred) > 0.5).float()
-        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
-        rec = recall(pred, masks, self.hparams.n_classes + 1)
-        pres = precision(pred, masks, self.hparams.n_classes + 1)
-        result.log("val_f1", f1, on_epoch=True)
-        result.log("val_recall", rec, on_epoch=True)
-        result.log("val_precision", pres, on_epoch=True)
-
-        return result
 
     def test_step(self, batch, batch_idx):
+        images, masks, masks_pred, loss = self.shared_step("test", batch)
+        self.logg_images(images, masks, masks_pred, "TEST")
+
+    def shared_step(self, step, batch):
         images, masks = batch["image"], batch["mask"]
+
         if images.shape[1] != self.hparams.n_channels:
             raise AssertionError(
                 f"Network has been defined with {self.n_channels} input channels, "
                 f"but loaded images have {images.shape[1]} channels. Please check that "
                 "the images are loaded correctly."
             )
-
         masks = (
             masks.type(torch.float32)
             if self.hparams.n_classes == 1
             else masks.type(torch.long)
         )
-
-        masks_pred = self(images)  # Forward pass
+        masks_pred = self(images)
         loss = self.loss_funciton(masks_pred, masks)
-        result = pl.EvalResult(loss, checkpoint_on=loss)
-        result.log("test_loss", loss, on_step=True, on_epoch=True, sync_dist=True)
-        self.logg_images(images, masks, masks_pred, "TEST")
-        pred = (torch.sigmoid(masks_pred) > 0.5).float()
-        f1 = f1_score(pred, masks, self.hparams.n_classes + 1)
-        rec = recall(pred, masks, self.hparams.n_classes + 1)
-        pres = precision(pred, masks, self.hparams.n_classes + 1)
-        result.log("test_f1", f1, on_epoch=True)
-        result.log("test_recall", rec, on_epoch=True)
-        result.log("test_precision", pres, on_epoch=True)
 
-        return result
+        pred = (torch.sigmoid(masks_pred) > 0.5).float()
+        f1 = f1_score(pred, masks)
+        rec = recall(pred, masks)
+        pres = precision(pred, masks)
+
+        self.log("{}_loss".format(step), loss, sync_dist=True)
+        self.log("{}_f1".format(step), f1, on_epoch=True)
+        self.log("{}_recall".format(step), rec, on_epoch=True)
+        self.log("{}_precision".format(step), pres, on_epoch=True)
+
+        return images, masks, masks_pred, loss
 
     @staticmethod
     def add_model_specific_args(parent_parser):
