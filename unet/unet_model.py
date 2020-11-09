@@ -224,14 +224,22 @@ class UNet(pl.LightningModule):
         """
         no_imgs = max(min(no_imgs, self.hparams.batch_size), 0)
         rand_idx = random.sample(range(0, self.hparams.batch_size), no_imgs)
+        msk_list = []
+
         for idx in rand_idx:
             onehot = torch.gt(torch.sigmoid(masks_pred[idx]), 0.5)
-            mask_grid = torchvision.utils.make_grid([masks[idx], onehot], nrow=2)
-            self.logger.experiment.add_image(
-                "{} - Target vs Predicted".format(step), mask_grid, self.current_epoch
-            )
+            grid = torchvision.utils.make_grid([masks[idx], onehot], nrow=1)
+            msk_list.append(grid)
+
+        mask_grid = torchvision.utils.make_grid(msk_list, nrow=no_imgs)
+        self.logger.experiment.add_image(
+            "{} - Target vs Predicted".format(step), mask_grid, self.global_step
+        )
+
+        img_list = []
+        for idx in rand_idx:
             alpha = 0.5
-            image_grid = torchvision.utils.make_grid(
+            grid = torchvision.utils.make_grid(
                 [
                     images[idx],
                     torch.clamp(
@@ -244,11 +252,15 @@ class UNet(pl.LightningModule):
                         ),
                         max=1.0,
                     ),
-                ]
+                ],
+                nrow=1,
             )
-            self.logger.experiment.add_image(
-                "{} - Image vs Predicted".format(step), image_grid, self.current_epoch
-            )
+            img_list.append(grid)
+
+        image_grid = torchvision.utils.make_grid(img_list, nrow=no_imgs)
+        self.logger.experiment.add_image(
+            "{} - Image vs Predicted".format(step), image_grid, self.global_step
+        )
 
     def training_step(self, batch, batch_idx):
         """
@@ -275,7 +287,7 @@ class UNet(pl.LightningModule):
         Test step.
         """
         images, masks, masks_pred, _ = self.shared_step("test", batch)
-        self.log_images(images, masks, masks_pred, 1, "TEST")
+        self.log_images(images, masks, masks_pred, self.hparams["batch_size"], "TEST")
 
     def shared_step(self, step, batch):
         """
@@ -308,7 +320,7 @@ class UNet(pl.LightningModule):
             "{}_recall".format(step): rec,
             "{}_precision".format(step): pres,
         }
-        self.log_dict(values, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log_dict(values)
 
         return images, masks, masks_pred, loss
 
