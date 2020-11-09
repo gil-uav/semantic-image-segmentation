@@ -21,6 +21,9 @@ load_dotenv(verbose=True)
 
 @discord_sender(webhook_url=os.getenv("DISCORD_WH"))
 def main():
+    """
+    Main training loop.
+    """
     parser = ArgumentParser()
 
     parser = UNet.add_model_specific_args(parser)
@@ -76,11 +79,7 @@ def main():
     )
     if not os.path.isdir(log_folder):
         os.mkdir(log_folder)
-    logger = TensorBoardLogger(
-        log_folder,
-        name=run_name,
-        default_hp_metric=False,
-    )
+    logger = TensorBoardLogger(log_folder, name=run_name)
 
     try:
         trainer = Trainer.from_argparse_args(
@@ -97,7 +96,7 @@ def main():
             if not os.getenv("GRAD_CLIP")
             else float(os.getenv("GRAD_CLIP")),
             max_epochs=100 if not os.getenv("EPOCHS") else int(os.getenv("EPOCHS")),
-            val_check_interval=100
+            val_check_interval=0.1
             if not os.getenv("VAL_INT_PER")
             else float(os.getenv("VAL_INT_PER")),
             default_root_dir=os.getcwd()
@@ -112,7 +111,7 @@ def main():
         try:
             sys.exit(0)
         except SystemExit:
-            os.exit(0)
+            os._exit(0)
 
 
 if __name__ == "__main__":
