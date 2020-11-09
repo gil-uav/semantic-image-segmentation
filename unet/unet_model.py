@@ -5,7 +5,6 @@ import copy
 import os
 import random
 from argparse import ArgumentParser
-from random import randint
 
 import kornia
 import pytorch_lightning as pl
@@ -271,7 +270,7 @@ class UNet(pl.LightningModule):
         if batch_idx % 10 == 0:
             self.log_images(images, masks, masks_pred, 3, "VAL")
 
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch, _):
         """
         Test step.
         """
