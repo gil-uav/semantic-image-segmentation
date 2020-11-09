@@ -225,7 +225,8 @@ class RandomNoise(torch.nn.Module):
         self.noise = self._check_input(noise)
 
     @torch.jit.unused
-    def _check_input(self, value):
+    @staticmethod
+    def _check_input(value):
         """
         Asserts the input.
         """
@@ -303,8 +304,9 @@ class RandomColorJitter(torch.nn.Module):
         self.saturation = self._check_input(saturation, "saturation")
 
     @torch.jit.unused
+    @staticmethod
     def _check_input(
-        self, value, name, center=1, bound=(0, float("inf")), clip_first_on_zero=True
+        value, name, center=1, bound=(0, float("inf")), clip_first_on_zero=True
     ):
         """
         Asserts the input.
@@ -379,8 +381,8 @@ class MaskToClasses(torch.nn.Module):
         self.mapping = self._check_input(mapping)
 
     @torch.jit.unused
+    @staticmethod
     def _check_input(
-        self,
         value,
     ):
         """
