@@ -3,6 +3,7 @@ Pytorch Ignite U-net module.
 """
 import copy
 import os
+import random
 from argparse import ArgumentParser
 from random import randint
 
@@ -101,6 +102,9 @@ class UNet(pl.LightningModule):
         return out
 
     def setup(self, stage):
+        """
+        Initiates datasets.
+        """
         dataset = OrthogonalPhotoDataset(**self.hparams)
         test_dataset = copy.deepcopy(OrthogonalPhotoDataset(**self.hparams))
         test_amount = int(len(dataset) * self.hparams.test_percent / 100)
@@ -129,6 +133,9 @@ class UNet(pl.LightningModule):
         self.test_set.dataset.set_augmentation(False)
 
     def train_dataloader(self):
+        """
+        Creates dataloader for the training set.
+        """
         return DataLoader(
             self.train_set,
             batch_size=self.hparams.batch_size,
@@ -138,6 +145,9 @@ class UNet(pl.LightningModule):
         )
 
     def val_dataloader(self):
+        """
+        Creates dataloader for the validation set.
+        """
         return DataLoader(
             self.val_set,
             batch_size=self.hparams.batch_size,
@@ -148,6 +158,9 @@ class UNet(pl.LightningModule):
         )
 
     def test_dataloader(self):
+        """
+        Creates dataloader for the test set.
+        """
         return DataLoader(
             self.test_set,
             batch_size=self.hparams.batch_size,
@@ -158,6 +171,18 @@ class UNet(pl.LightningModule):
         )
 
     def configure_optimizers(self):
+        """
+        Configures optimizers and learning rate scheduler.
+
+        Returns
+        -------
+        dict {
+            "optimizer": optimizer,
+            "lr_scheduler": lr_scheduler,
+            "monitor": "val_loss",
+            }
+
+        """
         optimizer = torch.optim.Adam(
             self.parameters(), lr=(self.learnig_rate or self.learning_rate)
         )
@@ -181,56 +206,82 @@ class UNet(pl.LightningModule):
         }
 
     def loss_funciton(self, logits, target):
+        """
+        Loss function.
+        """
         return self.criterion(logits, target)
 
-    def logg_images(self, images, masks, masks_pred, step: str = ""):
-        rand_idx = randint(0, self.hparams.batch_size - 1)
-        onehot = torch.gt(torch.sigmoid(masks_pred[rand_idx]), 0.5)
-
+    def log_parameters(self):
+        """
+        Logs parameters as distribution and histograms.
+        """
         for tag, value in self.named_parameters():
             tag = tag.replace(".", "/")
             self.logger.experiment.add_histogram(tag, value, self.current_epoch)
-        mask_grid = torchvision.utils.make_grid([masks[rand_idx], onehot], nrow=2)
-        self.logger.experiment.add_image(
-            "{} - Target vs Predicted".format(step), mask_grid, self.current_epoch
-        )
-        alpha = 0.5
-        image_grid = torchvision.utils.make_grid(
-            [
-                images[rand_idx],
-                torch.clamp(
-                    kornia.enhance.add_weighted(
-                        src1=images[rand_idx],
-                        alpha=1.0,
-                        src2=onehot,
-                        beta=alpha,
-                        gamma=0.0,
+
+    def log_images(self, images, masks, masks_pred, no_imgs: int, step: str):
+        """
+        Logs example images.
+        """
+        no_imgs = max(min(no_imgs, self.hparams.batch_size), 0)
+        rand_idx = random.sample(range(0, self.hparams.batch_size), no_imgs)
+        for idx in rand_idx:
+            onehot = torch.gt(torch.sigmoid(masks_pred[idx]), 0.5)
+            mask_grid = torchvision.utils.make_grid([masks[idx], onehot], nrow=2)
+            self.logger.experiment.add_image(
+                "{} - Target vs Predicted".format(step), mask_grid, self.current_epoch
+            )
+            alpha = 0.5
+            image_grid = torchvision.utils.make_grid(
+                [
+                    images[idx],
+                    torch.clamp(
+                        kornia.enhance.add_weighted(
+                            src1=images[idx],
+                            alpha=1.0,
+                            src2=onehot,
+                            beta=alpha,
+                            gamma=0.0,
+                        ),
+                        max=1.0,
                     ),
-                    max=1.0,
-                ),
-            ]
-        )
-        self.logger.experiment.add_image(
-            "{} - Image vs Predicted".format(step), image_grid, self.current_epoch
-        )
+                ]
+            )
+            self.logger.experiment.add_image(
+                "{} - Image vs Predicted".format(step), image_grid, self.current_epoch
+            )
 
     def training_step(self, batch, batch_idx):
+        """
+        Trainig step.
+        """
         images, masks, masks_pred, loss = self.shared_step("train", batch)
-        if batch_idx == 0:
-            self.logg_images(images, masks, masks_pred, "TRAIN")
+
+        if batch_idx % 100 == 0:
+            self.log_parameters()
+            self.log_images(images, masks, masks_pred, 3, "TRAIN")
 
         return loss
 
     def validation_step(self, batch, batch_idx):
+        """
+        Validation step.
+        """
         images, masks, masks_pred, _ = self.shared_step("val", batch)
-        if batch_idx == 0:
-            self.logg_images(images, masks, masks_pred, "VAL")
+        if batch_idx % 10 == 0:
+            self.log_images(images, masks, masks_pred, 3, "VAL")
 
-    def test_step(self, batch):
+    def test_step(self, batch, batch_idx):
+        """
+        Test step.
+        """
         images, masks, masks_pred, _ = self.shared_step("test", batch)
-        self.logg_images(images, masks, masks_pred, "TEST")
+        self.log_images(images, masks, masks_pred, 1, "TEST")
 
     def shared_step(self, step, batch):
+        """
+        Runs forward prop and calculates metrics.
+        """
         images, masks = batch["image"], batch["mask"]
 
         if images.shape[1] != self.hparams.n_channels:
@@ -252,15 +303,21 @@ class UNet(pl.LightningModule):
         rec = recall(pred, masks)
         pres = precision(pred, masks)
 
-        self.log("{}_loss".format(step), loss, sync_dist=True)
-        self.log("{}_f1".format(step), f1, on_epoch=True)
-        self.log("{}_recall".format(step), rec, on_epoch=True)
-        self.log("{}_precision".format(step), pres, on_epoch=True)
+        values = {
+            "{}_loss".format(step): loss,
+            "{}_f1".format(step): f1,
+            "{}_recall".format(step): rec,
+            "{}_precision".format(step): pres,
+        }
+        self.log_dict(values, on_step=True, on_epoch=True, prog_bar=True, logger=True)
 
         return images, masks, masks_pred, loss
 
     @staticmethod
     def add_model_specific_args(parent_parser):
+        """
+        Argument parser.
+        """
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         parser.add_argument(
             "-ch",
