@@ -71,6 +71,8 @@ class UNet(pl.LightningModule):
         self.up_conv_4 = Up(128, 64, bilinear)
         self.out_conv = OutConvolution(64, n_classes)
 
+        self.train_set, self.val_set, self.test_set = None
+
     def forward(self, x):
         """
         Feed-forward function.
@@ -102,7 +104,6 @@ class UNet(pl.LightningModule):
         train_amount = len(dataset) - val_amount - test_amount
 
         # Development-mode
-
         if not os.getenv("PROD"):
             # Fix the generator for reproducible results
             self.train_set, self.val_set, self.test_set = random_split(
@@ -175,8 +176,8 @@ class UNet(pl.LightningModule):
             "monitor": "val_loss",
         }
 
-    def loss_funciton(self, input, target):
-        return self.criterion(input, target)
+    def loss_funciton(self, logits, target):
+        return self.criterion(logits, target)
 
     def logg_images(self, images, masks, masks_pred, step: str = ""):
         rand_idx = randint(0, self.hparams.batch_size - 1)
@@ -217,12 +218,12 @@ class UNet(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        images, masks, masks_pred, loss = self.shared_step("val", batch)
+        images, masks, masks_pred, _ = self.shared_step("val", batch)
         if batch_idx == 0:
             self.logg_images(images, masks, masks_pred, "VAL")
 
     def test_step(self, batch, batch_idx):
-        images, masks, masks_pred, loss = self.shared_step("test", batch)
+        images, masks, masks_pred, _ = self.shared_step("test", batch)
         self.logg_images(images, masks, masks_pred, "TEST")
 
     def shared_step(self, step, batch):

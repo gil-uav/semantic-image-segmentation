@@ -1,11 +1,10 @@
-import glob
 import numbers
 import random
 from random import randint
 
 import numpy as np
 import torch
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance
 from skimage import img_as_float32
 from skimage.util import random_noise
 from torchvision import transforms
@@ -42,6 +41,7 @@ class Rescale(torch.nn.Module):
     """
 
     def __init__(self, output_size):
+        super(Rescale, self).__init__()
         self.skip = False
         self.output_size = self._check_input(output_size)
 
@@ -123,6 +123,7 @@ class RandomRotate(torch.nn.Module):
     """
 
     def __init__(self):
+        super(RandomRotate, self).__init__()
         self.rotate = randint(0, 3)
 
     def __call__(self, sample):
@@ -140,10 +141,6 @@ class RandomRotate(torch.nn.Module):
         elif self.rotate == 2:
             image = image.transpose(Image.ROTATE_270)
             mask = mask.transpose(Image.ROTATE_270)
-        else:
-            # no effect
-            image = image
-            mask = mask
 
         return {"image": image, "mask": mask}
 
@@ -159,6 +156,7 @@ class RandomFlip(torch.nn.Module):
     """
 
     def __init__(self):
+        super(RandomFlip, self).__init__()
         self.flip = randint(0, 3)
 
     def __call__(self, sample):
@@ -179,10 +177,6 @@ class RandomFlip(torch.nn.Module):
             mask = mask.transpose(Image.FLIP_TOP_BOTTOM)
             image = image.transpose(Image.FLIP_LEFT_RIGHT)
             mask = mask.transpose(Image.FLIP_LEFT_RIGHT)
-        else:
-            # no effect
-            image = image
-            mask = mask
 
         return {"image": image, "mask": mask}
 
@@ -209,7 +203,7 @@ class RandomNoise(torch.nn.Module):
     """
 
     def __init__(self, noise: int = -1):
-        super().__init__()
+        super(RandomNoise, self).__init__()
         self.noise = self._check_input(noise)
 
     @torch.jit.unused
@@ -276,6 +270,7 @@ class RandomColorJitter(torch.nn.Module):
     """
 
     def __init__(self, brightness=0, contrast=0, saturation=0):
+        super(RandomColorJitter, self).__init__()
         self.brightness = self._check_input(brightness, "brightness")
         self.contrast = self._check_input(contrast, "contrast")
         self.saturation = self._check_input(saturation, "saturation")
@@ -348,6 +343,7 @@ class MaskToClasses(torch.nn.Module):
     """
 
     def __init__(self, mapping):
+        super(MaskToClasses, self).__init__()
         self.mapping = self._check_input(mapping)
 
     @torch.jit.unused
