@@ -1,3 +1,6 @@
+"""
+Pytorch Ignite U-net module.
+"""
 import copy
 import os
 from argparse import ArgumentParser
@@ -17,9 +20,8 @@ from utils.dataset import OrthogonalPhotoDataset
 
 
 class UNet(pl.LightningModule):
-    """
-    Basic U-net structure as described in : O. Ronneberger, P. Fischer, and T. Brox, “U-net: Convolutional networks
-    for biomedical image segmentation.” 2015.
+    """Basic U-net structure as described in : O. Ronneberger, P. Fischer, and T. Brox,
+    “U-net: Convolutional networks for biomedical image segmentation.” 2015.
     """
 
     def __init__(
@@ -27,7 +29,7 @@ class UNet(pl.LightningModule):
         n_channels: int = 3,
         n_classes: int = 1,
         bilinear=True,
-        lr: float = 0.0001,
+        learning_rate: float = 0.0001,
         **kwargs,
     ):
         """
@@ -42,7 +44,7 @@ class UNet(pl.LightningModule):
             Bilinear interpolation in upsampling(default)
         """
         super().__init__()
-        self.lr = lr
+        self.learnig_rate = learning_rate
         self.save_hyperparameters()
 
         self.example_input_array = torch.randn(
@@ -71,7 +73,9 @@ class UNet(pl.LightningModule):
         self.up_conv_4 = Up(128, 64, bilinear)
         self.out_conv = OutConvolution(64, n_classes)
 
-        self.train_set, self.val_set, self.test_set = None
+        self.train_set = None
+        self.val_set = None
+        self.test_set = None
 
     def forward(self, x):
         """
@@ -129,7 +133,7 @@ class UNet(pl.LightningModule):
             self.train_set,
             batch_size=self.hparams.batch_size,
             shuffle=True,
-            num_workers=int(os.getenv("WORKERS", 4)),
+            num_workers=int(os.getenv("WORKERS")),
             pin_memory=True,
         )
 
@@ -138,7 +142,7 @@ class UNet(pl.LightningModule):
             self.val_set,
             batch_size=self.hparams.batch_size,
             shuffle=False,
-            num_workers=int(os.getenv("WORKERS", 4)),
+            num_workers=int(os.getenv("WORKERS")),
             pin_memory=True,
             drop_last=True,
         )
@@ -148,14 +152,14 @@ class UNet(pl.LightningModule):
             self.test_set,
             batch_size=self.hparams.batch_size,
             shuffle=False,
-            num_workers=int(os.getenv("WORKERS", 4)),
+            num_workers=int(os.getenv("WORKERS")),
             pin_memory=True,
             drop_last=True,
         )
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=(self.lr or self.learning_rate)
+            self.parameters(), lr=(self.learnig_rate or self.learning_rate)
         )
         lr_scheduler = ReduceLROnPlateau(
             optimizer,
@@ -181,7 +185,7 @@ class UNet(pl.LightningModule):
 
     def logg_images(self, images, masks, masks_pred, step: str = ""):
         rand_idx = randint(0, self.hparams.batch_size - 1)
-        onehot = torch.sigmoid(masks_pred[rand_idx]) > 0.5
+        onehot = torch.gt(torch.sigmoid(masks_pred[rand_idx]), 0.5)
 
         for tag, value in self.named_parameters():
             tag = tag.replace(".", "/")
@@ -222,7 +226,7 @@ class UNet(pl.LightningModule):
         if batch_idx == 0:
             self.logg_images(images, masks, masks_pred, "VAL")
 
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch):
         images, masks, masks_pred, _ = self.shared_step("test", batch)
         self.logg_images(images, masks, masks_pred, "TEST")
 
@@ -236,14 +240,14 @@ class UNet(pl.LightningModule):
                 "the images are loaded correctly."
             )
         masks = (
-            masks.type(torch.float32)
+            masks.type(torch.half)
             if self.hparams.n_classes == 1
             else masks.type(torch.long)
         )
         masks_pred = self(images)
         loss = self.loss_funciton(masks_pred, masks)
 
-        pred = (torch.sigmoid(masks_pred) > 0.5).float()
+        pred = torch.gt(torch.sigmoid(masks_pred), 0.5).half()
         f1 = f1_score(pred, masks)
         rec = recall(pred, masks)
         pres = precision(pred, masks)
