@@ -225,21 +225,14 @@ class UNet(pl.LightningModule):
         no_imgs = max(min(no_imgs, self.hparams.batch_size), 0)
         rand_idx = random.sample(range(0, self.hparams.batch_size), no_imgs)
         msk_list = []
+        img_list = []
 
+        alpha = 0.5
         for idx in rand_idx:
             onehot = torch.gt(torch.sigmoid(masks_pred[idx]), 0.5)
-            grid = torchvision.utils.make_grid([masks[idx], onehot], nrow=1)
-            msk_list.append(grid)
-
-        mask_grid = torchvision.utils.make_grid(msk_list, nrow=no_imgs)
-        self.logger.experiment.add_image(
-            "{} - Target vs Predicted".format(step), mask_grid, self.global_step
-        )
-
-        img_list = []
-        for idx in rand_idx:
-            alpha = 0.5
-            grid = torchvision.utils.make_grid(
+            msk_grid = torchvision.utils.make_grid([masks[idx], onehot], nrow=1)
+            msk_list.append(msk_grid)
+            img_grid = torchvision.utils.make_grid(
                 [
                     images[idx],
                     torch.clamp(
@@ -255,8 +248,12 @@ class UNet(pl.LightningModule):
                 ],
                 nrow=1,
             )
-            img_list.append(grid)
+            img_list.append(img_grid)
 
+        mask_grid = torchvision.utils.make_grid(msk_list, nrow=no_imgs)
+        self.logger.experiment.add_image(
+            "{} - Target vs Predicted".format(step), mask_grid, self.global_step
+        )
         image_grid = torchvision.utils.make_grid(img_list, nrow=no_imgs)
         self.logger.experiment.add_image(
             "{} - Image vs Predicted".format(step), image_grid, self.global_step
