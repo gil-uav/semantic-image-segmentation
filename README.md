@@ -13,7 +13,7 @@ This repository aims to implement and produce trained networks in semantic image
 Current network structure is [U-net](https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/).
 
 ## Dependencies
-* [Python](https://www.python.org/) (version 3.7)
+* [Python](https://www.python.org/) (version 3.8)
 * [Pip](https://virtualenv.pypa.io/en/latest/)
 * [virtualenv](https://virtualenv.pypa.io/en/latest/) or:
 * [conda](https://docs.conda.io/en/latest/)
