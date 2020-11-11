@@ -9,14 +9,14 @@ from knockknock import discord_sender
 import torch
 from dotenv import load_dotenv
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import EarlyStopping
+from pytorch_lightning.callbacks import EarlyStopping, LearningRateMonitor
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from torch.backends import cudnn
 
 from unet.unet_model import UNet
 
-load_dotenv(verbose=True)
+load_dotenv()
 
 
 @discord_sender(webhook_url=os.getenv("DISCORD_WH"))
@@ -32,7 +32,7 @@ def main():
     args = parser.parse_args()
 
     prod = bool(os.getenv("PROD"))
-    logging.getLogger("lightning").setLevel(logging.INFO)
+    logging.getLogger(__name__).setLevel(logging.INFO)
 
     if prod:
         logging.info("Training i production mode, disabling all debugging APIs")
@@ -67,6 +67,8 @@ def main():
         verbose=True,
     )
 
+    lr_monitor = LearningRateMonitor()
+
     run_name = "{}_LR{}_BS{}_IS{}".format(
         datetime.now().strftime("%d-%m-%Y-%H-%M-%S"),
         args.lr,
@@ -88,7 +90,7 @@ def main():
             precision=16,
             distributed_backend="ddp",
             logger=logger,
-            callbacks=[early_stop_callback],
+            callbacks=[early_stop_callback, lr_monitor],
             accumulate_grad_batches=1.0
             if not os.getenv("ACC_GRAD")
             else int(os.getenv("ACC_GRAD")),

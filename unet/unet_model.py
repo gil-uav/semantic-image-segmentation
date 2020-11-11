@@ -11,7 +11,6 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torchvision
-from pytorch_lightning.metrics.functional import f1_score, precision, recall
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader, random_split
 
@@ -44,7 +43,7 @@ class UNet(pl.LightningModule):
             Bilinear interpolation in upsampling(default)
         """
         super().__init__()
-        self.learnig_rate = learning_rate
+        self.learning_rate = learning_rate
         self.save_hyperparameters()
 
         self.example_input_array = torch.randn(
@@ -61,6 +60,7 @@ class UNet(pl.LightningModule):
 
         factor = 2 if bilinear else 1
 
+        # Model definition start
         self.in_conv = DoubleConvolution(n_channels, 64)
         self.down_conv_1 = Down(64, 128)
         self.down_conv_2 = Down(128, 256)
@@ -72,10 +72,30 @@ class UNet(pl.LightningModule):
         self.up_conv_3 = Up(256, 128 // factor, bilinear)
         self.up_conv_4 = Up(128, 64, bilinear)
         self.out_conv = OutConvolution(64, n_classes)
+        # Model definition end
 
+        # Dataset
         self.train_set = None
         self.val_set = None
         self.test_set = None
+
+        # Metrics
+        self.train_pres = pl.metrics.Precision(num_classes=self.hparams.n_classes)
+        self.train_rec = pl.metrics.Recall(num_classes=self.hparams.n_classes)
+        self.train_f1 = pl.metrics.Fbeta(num_classes=self.hparams.n_classes)
+
+        self.val_pres = pl.metrics.Precision(num_classes=self.hparams.n_classes)
+        self.val_rec = pl.metrics.Recall(num_classes=self.hparams.n_classes)
+        self.val_f1 = pl.metrics.Fbeta(num_classes=self.hparams.n_classes)
+
+        self.test_pres = pl.metrics.Precision(num_classes=self.hparams.n_classes)
+        self.test_rec = pl.metrics.Recall(num_classes=self.hparams.n_classes)
+        self.test_f1 = pl.metrics.Fbeta(num_classes=self.hparams.n_classes)
+
+        # Logging iterations
+        self.train_log = 0
+        self.val_log = 0
+        self.test_log = 0
 
     def forward(self, x):
         """
@@ -109,6 +129,11 @@ class UNet(pl.LightningModule):
         test_amount = int(len(dataset) * self.hparams.test_percent / 100)
         val_amount = int(len(dataset) * self.hparams.val_percent / 100)
         train_amount = len(dataset) - val_amount - test_amount
+
+        # Logging iterations
+        self.train_log = int(train_amount / 10)
+        self.val_log = int(val_amount / 10)
+        self.test_log = int(test_amount / 10)
 
         # Development-mode
         if not os.getenv("PROD"):
@@ -183,28 +208,31 @@ class UNet(pl.LightningModule):
 
         """
         optimizer = torch.optim.Adam(
-            self.parameters(), lr=(self.learnig_rate or self.learning_rate)
+            self.parameters(), lr=(self.learning_rate or self.learning_rate)
         )
-        lr_scheduler = ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            factor=0.01,
-            patience=10,
-            threshold=0.0001,
-            threshold_mode="rel",
-            cooldown=0,
-            min_lr=0,
-            eps=1e-08,
-            verbose=False,
-        )
+        lr_scheduler = {
+            "scheduler": ReduceLROnPlateau(
+                optimizer,
+                mode="min",
+                factor=0.01,
+                patience=10,
+                threshold=0.0001,
+                threshold_mode="rel",
+                cooldown=0,
+                min_lr=0,
+                eps=1e-08,
+                verbose=False,
+            ),
+            "name": "learning_rate",
+            "monitor": "val_loss",
+        }
 
         return {
             "optimizer": optimizer,
             "lr_scheduler": lr_scheduler,
-            "monitor": "val_loss",
         }
 
-    def loss_funciton(self, logits, target):
+    def loss_function(self, logits, target):
         """
         Loss function.
         """
@@ -261,13 +289,22 @@ class UNet(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         """
-        Trainig step.
+        Training step.
         """
-        images, masks, masks_pred, loss = self.shared_step("train", batch)
+        images, masks, masks_pred, loss = self.shared_step(batch)
 
-        if batch_idx % 100 == 0:
+        self.train_pres(masks_pred, masks)
+        self.train_rec(masks_pred, masks)
+        self.train_f1(masks_pred, masks)
+
+        self.log("train_loss", loss)
+        self.log("train_precision", self.train_pres)
+        self.log("train_recall", self.train_rec)
+        self.log("train_f1", self.train_f1)
+
+        if batch_idx % self.train_log == 0:
             self.log_parameters()
-            self.log_images(images, masks, masks_pred, 3, "TRAIN")
+            self.log_images(images, masks, masks_pred, 5, "TRAIN")
 
         return loss
 
@@ -275,18 +312,39 @@ class UNet(pl.LightningModule):
         """
         Validation step.
         """
-        images, masks, masks_pred, _ = self.shared_step("val", batch)
-        if batch_idx % 10 == 0:
-            self.log_images(images, masks, masks_pred, 3, "VAL")
+        images, masks, masks_pred, loss = self.shared_step(batch)
 
-    def test_step(self, batch, _):
+        self.val_pres(masks_pred, masks)
+        self.val_rec(masks_pred, masks)
+        self.val_f1(masks_pred, masks)
+
+        self.log("val_loss", loss)
+        self.log("val_precision", self.val_pres)
+        self.log("val_recall", self.val_rec)
+        self.log("val_f1", self.val_f1)
+
+        if batch_idx % self.val_log == 0:
+            self.log_images(images, masks, masks_pred, 5, "VAL")
+
+    def test_step(self, batch, batch_idx):
         """
         Test step.
         """
-        images, masks, masks_pred, _ = self.shared_step("test", batch)
-        self.log_images(images, masks, masks_pred, self.hparams["batch_size"], "TEST")
+        images, masks, masks_pred, loss = self.shared_step(batch)
 
-    def shared_step(self, step, batch):
+        self.test_pres(masks_pred, masks)
+        self.test_rec(masks_pred, masks)
+        self.test_f1(masks_pred, masks)
+
+        self.log("test_loss", loss)
+        self.log("test_precision", self.test_pres)
+        self.log("test_recall", self.test_rec)
+        self.log("test_f1", self.test_f1)
+
+        if batch_idx % self.test_log == 0:
+            self.log_images(images, masks, masks_pred, 5, "TEST")
+
+    def shared_step(self, batch):
         """
         Runs forward prop and calculates metrics.
         """
@@ -304,20 +362,7 @@ class UNet(pl.LightningModule):
             else masks.type(torch.long)
         )
         masks_pred = self(images)
-        loss = self.loss_funciton(masks_pred, masks)
-
-        pred = torch.gt(torch.sigmoid(masks_pred), 0.5).half()
-        f1 = f1_score(pred, masks)
-        rec = recall(pred, masks)
-        pres = precision(pred, masks)
-
-        values = {
-            "{}_loss".format(step): loss,
-            "{}_f1".format(step): f1,
-            "{}_recall".format(step): rec,
-            "{}_precision".format(step): pres,
-        }
-        self.log_dict(values)
+        loss = self.loss_function(masks_pred, masks)
 
         return images, masks, masks_pred, loss
 
