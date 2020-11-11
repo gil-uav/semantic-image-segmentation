@@ -293,9 +293,10 @@ class UNet(pl.LightningModule):
         """
         images, masks, masks_pred, loss = self.shared_step(batch)
 
-        self.train_pres(masks_pred, masks)
-        self.train_rec(masks_pred, masks)
-        self.train_f1(masks_pred, masks)
+        pred = torch.gt(torch.sigmoid(masks_pred), 0.5).half()
+        self.train_pres(pred, masks)
+        self.train_rec(pred, masks)
+        self.train_f1(pred, masks)
 
         self.log("train_loss", loss)
         self.log("train_precision", self.train_pres)
@@ -314,9 +315,10 @@ class UNet(pl.LightningModule):
         """
         images, masks, masks_pred, loss = self.shared_step(batch)
 
-        self.val_pres(masks_pred, masks)
-        self.val_rec(masks_pred, masks)
-        self.val_f1(masks_pred, masks)
+        pred = torch.gt(torch.sigmoid(masks_pred), 0.5).half()
+        self.val_pres(pred, masks)
+        self.val_rec(pred, masks)
+        self.val_f1(pred, masks)
 
         self.log("val_loss", loss)
         self.log("val_precision", self.val_pres)
@@ -332,9 +334,10 @@ class UNet(pl.LightningModule):
         """
         images, masks, masks_pred, loss = self.shared_step(batch)
 
-        self.test_pres(masks_pred, masks)
-        self.test_rec(masks_pred, masks)
-        self.test_f1(masks_pred, masks)
+        pred = torch.gt(torch.sigmoid(masks_pred), 0.5).half()
+        self.test_pres(pred, masks)
+        self.test_rec(pred, masks)
+        self.test_f1(pred, masks)
 
         self.log("test_loss", loss)
         self.log("test_precision", self.test_pres)
