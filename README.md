@@ -1,4 +1,5 @@
-# Semantic Image Segmentation
+# DEPRECATED! Development continues here: [semantic-image-segmentation-unet](https://github.com/gil-uav/semantic-image-segmentation-unet)
+# Semantic Image Segmentation 
 **Members** : <a href="https://github.com/vegovs">Vegard Bergsvik Øvstegård</a>
 
 **Supervisors** : <a href="https://www.mn.uio.no/ifi/personer/vit/jimtoer/">Jim Tørresen</a>
